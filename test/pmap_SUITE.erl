@@ -104,7 +104,7 @@ test_pmap_task(Config) when is_list(Config) ->
     V = 
     pmap:task(
       fun(N) ->
-              pmap:async(fun() -> timer:sleep(N * 100) end)
+              pmap:atask(fun() -> timer:sleep(N * 100) end)
       end, lists:seq(1, 10), 2),
     End = erlang:now(),
     V = lists:reverse(lists:map(fun(N) -> {N, ok} end, lists:seq(1, 10))),
@@ -117,7 +117,7 @@ test_pmap_monitor() ->
 test_pmap_monitor(Config) when is_list(Config) ->
     V = pmap:monitor_task(
           fun(N) ->
-                  pmap:async(fun() -> timer:sleep(N * 100) end)
+                  pmap:atask(fun() -> timer:sleep(N * 100) end)
           end, lists:seq(1, 10), 2),
     timer:sleep(150),
     {progress, {1, [3, 2]}} = pmap:status(V),

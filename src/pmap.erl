@@ -10,7 +10,7 @@
 
 %% API
 -export([start/0]).
--export([async/1]).
+-export([atask/1]).
 -export([task/2, task/3, task/5]).
 -export([async_task/2, async_task/3, async_task/5]).
 -export([monitor_task/2, monitor_task/3, monitor_task/5, status/1]).
@@ -23,8 +23,8 @@
 start() ->
     application:start(pmap).
 
-async(F) ->
-    pmap_worker:async(F).
+atask(F) ->
+    atask_worker:atask(F).
 
 task(TaskHandler, Items) ->
     task(TaskHandler, Items, 0).

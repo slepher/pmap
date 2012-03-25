@@ -11,7 +11,6 @@
 -behaviour(gen_server).
 
 %% API
--export([async/1]).
 -export([task/5, async_task/5, monitor_task/6, progress/1]).
 -export([start/0]).
 -export([start_link/0]).
@@ -27,9 +26,6 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-async(Action) ->
-    atask:start_and_action(fun start/0, fun atask_gen_server:call/2, [{action, Action}]).
-
 task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     atask:start_and_action(fun start/0, fun gen_server:call/3,
                            [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit, undefined}, infinity]).
@@ -89,9 +85,6 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-
-handle_call({action, Action}, _From, State) ->
-    {stop, normal, Action(), State};
 
 handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit, Monitor}, From, State) ->
     {WorkingItems, PendingItems} = split_items(Items, Limit),

@@ -61,14 +61,21 @@ init([]) ->
     Type = worker,
 
     AChild = {'pmap_monitor', {'pmap_monitor', start_link, []}, Restart, Shutdown, Type, ['pmap_monitor']},
-    ASup =   {'pmap_worker_sup', {supervisor, start_link,
+    PWSup  =  {'pmap_worker_sup', {supervisor, start_link,
                                   [{local, pmap_worker_sup}, ?MODULE, [pmap_worker_sup]]},
-              transient, infinity, supervisor, []},
-    {ok, {SupFlags, [AChild, ASup]}};
+               transient, infinity, supervisor, []},
+    AWSup  =  {'atask_worker_sup', {supervisor, start_link,
+                                    [{local, atask_worker_sup}, ?MODULE, [atask_worker_sup]]},
+               transient, infinity, supervisor, []},
+    {ok, {SupFlags, [AChild, PWSup, AWSup]}};
 
 init([pmap_worker_sup]) ->
     {ok, {{simple_one_for_one, 10, 10},
           [{undefined, {pmap_worker, start_link, []}, temporary, 5000, worker, [pmap_worker]}]
+         }};
+init([atask_worker_sup]) ->
+    {ok, {{simple_one_for_one, 10, 10},
+          [{undefined, {atask_worker, start_link, []}, temporary, 5000, worker, [atask_worker]}]
          }}.
 
 
