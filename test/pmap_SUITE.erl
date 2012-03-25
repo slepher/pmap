@@ -92,10 +92,20 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_pmap_task, test_pmap_monitor].
+    [test_map, test_pmap_task, test_pmap_monitor].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
+
+test_map() ->
+    [{doc, "Describe the main purpose of this test case"}].
+test_map(Config) when is_list(Config) ->
+    F = fun(A) ->  A * 2 end,
+    Items = lists:seq(1, 10),
+    V1 = lists:map(F, Items),
+    V2 = pmap:map(F, Items),
+    V1 = V2.
+                
 test_pmap_task() ->
     [{doc, "Describe the main purpose of this test case"}].
 

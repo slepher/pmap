@@ -11,6 +11,7 @@
 %% API
 -export([start/0]).
 -export([atask/1]).
+-export([map/2, map/3]).
 -export([task/2, task/3, task/5]).
 -export([async_task/2, async_task/3, async_task/5]).
 -export([monitor_task/2, monitor_task/3, monitor_task/5, status/1]).
@@ -25,6 +26,16 @@ start() ->
 
 atask(F) ->
     atask_worker:atask(F).
+
+map(F, Items) ->
+    map(F, Items, 0).
+
+map(F, Items, Limit) ->
+    lists:reverse(
+      task(
+        fun(Item) -> pmap:atask(fun() -> F(Item) end) end,
+        fun(_Item, Reply, Acc) -> [Reply|Acc] end,
+        [], Items, Limit)).
 
 task(TaskHandler, Items) ->
     task(TaskHandler, Items, 0).
