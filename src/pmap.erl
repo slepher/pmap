@@ -33,7 +33,7 @@ map(F, Items) ->
 map(F, Items, Limit) ->
     Length = length(Items),
     Handler = fun(N) -> Item = lists:nth(N, Items), pmap:atask(fun() -> F(Item) end) end,
-    [V|| {_N, V} <- lists:usort(task(Handler, lists:seq(1, Length), Limit))].
+    [V|| {_N, V} <- lists:keysort(1, task(Handler, lists:seq(1, Length), Limit))].
 
 task(TaskHandler, Items) ->
     task(TaskHandler, Items, 0).
