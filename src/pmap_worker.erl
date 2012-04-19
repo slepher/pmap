@@ -126,6 +126,8 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({message, MRef, Response}, State) when is_reference(MRef) ->
+    atask_gen_server:handle_reply({message, MRef, Response}, #state.callbacks, State);
 handle_info({MRef, Response}, State) when is_reference(MRef) ->
     atask_gen_server:handle_reply({MRef, Response}, #state.callbacks, State);
 handle_info({'DOWN', MRef, Type, Object, Reason}, State) when is_reference(MRef) ->

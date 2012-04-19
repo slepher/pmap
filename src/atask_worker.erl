@@ -74,8 +74,17 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 
-handle_call({action, Action}, _From, State) ->
-    {stop, normal, Action(), State}.                                  
+handle_call({action, Action}, From, State) ->
+    Reply = 
+        case erlang:fun_info(Action, arity) of
+            {arity, 0} ->
+                Action();
+            {arity, 1} ->
+                Action(From);
+            _ ->
+                {error, invalid_argnumber}
+        end,
+    {stop, normal, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
