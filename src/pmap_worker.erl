@@ -232,4 +232,9 @@ add_task(Item, TaskHandler, ReplyHandler, Monitor, From, State) ->
                                  NS#state{working = NNWIs, pending = NPIs})
                  end
         end,
-    atask_gen_server:wait_reply(Callback, TaskHandler(Item), #state.callbacks, State).
+    case TaskHandler(Item) of
+        MRef when is_reference(MRef) ->
+            atask_gen_server:wait_reply(Callback, MRef, #state.callbacks, State);
+        Other ->
+            Callback(Other, State)
+    end.
