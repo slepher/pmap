@@ -205,7 +205,13 @@ reply(Monitor, From, Reply) ->
 add_task(Item, TaskHandler, ReplyHandler, Monitor, From, State) ->
     Callback =
         fun(Reply, #state{acc = Acc, working = WIs, pending = PIs, completed = C} = S) ->
-                NAcc = ReplyHandler(Item, Reply, Acc),
+                NAcc =
+                    case erlang:fun_info(ReplyHandler, arity) of
+                        {arity, 3} ->
+                            ReplyHandler(Item, Reply, Acc);
+                        {arity, 4} ->
+                            ReplyHandler(Item, Reply, From, Acc)
+                    end,
                 NWIs = lists:delete(Item, WIs),
                 NS = S#state{acc = NAcc, completed = C + 1},
                 case next_item(PIs) of
