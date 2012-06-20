@@ -88,7 +88,7 @@ init([]) ->
 
 handle_call({task, _TaskHandler, _ReplyHandler, Acc0, [], _Limit, Monitor}, From, State) ->
     reply(Monitor, From, Acc0),
-    {noreply, State};
+    {stop, normal, State};
 
 handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit, Monitor}, From, State) ->
     {WorkingItems, PendingItems} = split_items(Items, Limit),
