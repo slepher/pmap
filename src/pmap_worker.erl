@@ -216,25 +216,30 @@ add_task(Item, TaskHandler, ReplyHandler, Monitor, From, State) ->
                         {arity, 4} ->
                             ReplyHandler(Item, Reply, From, Acc)
                     end,
-                NWIs = lists:delete(Item, WIs),
-                NS = S#state{acc = NAcc, completed = C + 1},
-                case next_item(PIs) of
-                     done ->
-                         NNS = NS#state{working = NWIs, pending = []},
-                         case NWIs of
-                             [] ->
-                                 reply(Monitor, From, NAcc),
-                                 {stop, normal, NNS};
-                             _ ->
-                                 message_monitor(Monitor, From, {C + 1, NWIs}),
-                                 NNS
-                         end; 
-                     {TaskItem, NPIs} ->
-                        NNWIs = [TaskItem|NWIs],
-                        message_monitor(Monitor, From, {C + 1,NNWIs}),
-                        add_task(TaskItem, TaskHandler, ReplyHandler, Monitor, From,
-                                 NS#state{working = NNWIs, pending = NPIs})
-                 end
+                case Reply of
+                    {message, _Message} ->
+                        S#state{acc = NAcc};
+                    _ ->
+                        NWIs = lists:delete(Item, WIs),
+                        NS = S#state{acc = NAcc, completed = C + 1},
+                        case next_item(PIs) of
+                            done ->
+                                NNS = NS#state{working = NWIs, pending = []},
+                                case NWIs of
+                                    [] ->
+                                        reply(Monitor, From, NAcc),
+                                        {stop, normal, NNS};
+                                    _ ->
+                                        message_monitor(Monitor, From, {C + 1, NWIs}),
+                                        NNS
+                                end; 
+                            {TaskItem, NPIs} ->
+                                NNWIs = [TaskItem|NWIs],
+                                message_monitor(Monitor, From, {C + 1,NNWIs}),
+                                add_task(TaskItem, TaskHandler, ReplyHandler, Monitor, From,
+                                         NS#state{working = NNWIs, pending = NPIs})
+                        end
+                end
         end,
     case TaskHandler(Item) of
         MRef when is_reference(MRef) ->
