@@ -85,19 +85,36 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, {_PId, MRef} = From,
             #state{progresses = ProgressMap} = State) ->
-    Async = pmap_worker:monitor_task(From, TaskHandler, ReplyHandler, Acc0, Items, Limit),
+    Async = pmap:async_task(
+              fun(Item, AtaskFrom) ->
+                      atask_gen_server:message(AtaskFrom, {processing, Item}),
+                      pmap_worker:apply_task_handler(TaskHandler, Item, AtaskFrom)
+              end,
+              fun(Item, Reply, AtaskFrom, Acc) ->
+                      atask_gen_server:message(AtaskFrom, {done, Item}),
+                      pmap_worker:apply_reply_handler(ReplyHandler, Item, Reply, AtaskFrom, Acc)
+              end, Acc0, Items, Limit),
     NProgressMap = dict:store(MRef, {0, []}, ProgressMap),
     NState = 
         atask_gen_server:wait_reply(
           fun(Reply, #state{progresses = PMap} = S) ->
+                  {CurrentNum, Working} =
+                      case dict:find(MRef, PMap) of
+                          {ok, Val} ->
+                              Val;
+                          error ->
+                              {0, []}
+                      end,
                   NPMap = 
                       case Reply of
-                          done ->
-                              dict:erase(MRef, PMap);
-                          {message, Message} ->
-                              dict:store(MRef, Message, PMap);
-                          {error, Reason} ->
-                              gen_server:reply(From, {error, Reason}),
+                          {message, {done, Item}} ->
+                              NVal = {CurrentNum + 1, lists:delete(Item, Working)},
+                              dict:store(MRef, NVal, PMap);
+                          {message, {processing, Item}} ->
+                              NVal = {CurrentNum, [Item|Working]},
+                              dict:store(MRef, NVal, PMap);
+                          V ->
+                              gen_server:reply(From, V),
                               dict:erase(MRef, PMap)
                       end,
                   S#state{progresses = NPMap}

@@ -11,7 +11,8 @@
 -behaviour(gen_server).
 
 %% API
--export([task/5, async_task/5, monitor_task/6, progress/1]).
+-export([task/5, async_task/5, progress/1]).
+-export([apply_task_handler/3, apply_reply_handler/5]).
 -export([start/0]).
 -export([start_link/0]).
 
@@ -28,21 +29,40 @@
 %%%===================================================================
 task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     atask:start_and_action(fun start/0, fun gen_server:call/3,
-                           [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit, undefined}, infinity]).
+                           [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, infinity]).
 
 async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     atask:start_and_action(fun start/0, fun atask_gen_server:call/2,
-                           [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit, undefined}]).
-
-monitor_task(From, TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
-    atask:start_and_action(fun start/0, fun atask_gen_server:call/2,
-                           [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit, From}]).
+                           [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit}]).
 
 progress(PId) ->
     pmap_util:async_gen_server_call(PId, progress).
 
 start() ->
     supervisor:start_child(pmap_worker_sup, []).
+
+apply_task_handler(TaskHandler, Item, From) ->
+    case erlang:fun_info(TaskHandler, arity) of
+        {arity, 1} ->
+            TaskHandler(Item);
+        {arity, 2} ->
+            TaskHandler(Item, From);
+        {arity, N} ->
+            exit({invalid_task_handler, TaskHandler, N})
+    end.
+
+apply_reply_handler(ReplyHandler, Item, Reply, From, Acc) ->
+    case erlang:fun_info(ReplyHandler, arity) of
+        {arity, 3} ->
+            ReplyHandler(Item, Reply, Acc);
+        {arity, 4} ->
+            ReplyHandler(Item, Reply, From, Acc);
+        {arity, N} ->
+            exit({invalid_reply_handler, ReplyHandler, N})
+    end.
+
+
+    
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -86,17 +106,16 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 
-handle_call({task, _TaskHandler, _ReplyHandler, Acc0, [], _Limit, Monitor}, From, State) ->
-    reply(Monitor, From, Acc0),
+handle_call({task, _TaskHandler, _ReplyHandler, Acc0, [], _Limit}, From, State) ->
+    gen_server:reply(From, Acc0),
     {stop, normal, State};
 
-handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit, Monitor}, From, State) ->
+handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, From, State) ->
     {WorkingItems, PendingItems} = split_items(Items, Limit),
-    message_monitor(Monitor, From, {0, WorkingItems}),
     NState = 
         lists:foldl(
           fun(Item, S) ->
-                  add_task(Item, TaskHandler, ReplyHandler, Monitor, From, S)
+                  add_task(Item, TaskHandler, ReplyHandler, From, S)
           end, State#state{acc = Acc0, working = WorkingItems, pending = PendingItems}, WorkingItems),
     {noreply, NState};
 
@@ -194,28 +213,10 @@ split_items(Continuation, Limit, Acc) ->
             {Acc, []}
     end.
 
-message_monitor(undefined, _, _) ->
-    ok;
-message_monitor(_Monitor, From, Reply) ->
-    atask_gen_server:message(From, Reply).
-
-reply(undefined, From, Reply) ->
-    gen_server:reply(From, Reply);
-reply(Monitor, From, Reply) ->
-    gen_server:reply(Monitor, Reply),
-    gen_server:reply(From, done).
-
-
-add_task(Item, TaskHandler, ReplyHandler, Monitor, From, State) ->
+add_task(Item, TaskHandler, ReplyHandler, From, State) ->
     Callback =
         fun(Reply, #state{acc = Acc, working = WIs, pending = PIs, completed = C} = S) ->
-                NAcc =
-                    case erlang:fun_info(ReplyHandler, arity) of
-                        {arity, 3} ->
-                            ReplyHandler(Item, Reply, Acc);
-                        {arity, 4} ->
-                            ReplyHandler(Item, Reply, From, Acc)
-                    end,
+                NAcc = apply_reply_handler(ReplyHandler, Item, Reply, From, Acc),
                 case Reply of
                     {message, _Message} ->
                         S#state{acc = NAcc};
@@ -227,21 +228,19 @@ add_task(Item, TaskHandler, ReplyHandler, Monitor, From, State) ->
                                 NNS = NS#state{working = NWIs, pending = []},
                                 case NWIs of
                                     [] ->
-                                        reply(Monitor, From, NAcc),
+                                        gen_server:reply(From, NAcc),
                                         {stop, normal, NNS};
                                     _ ->
-                                        message_monitor(Monitor, From, {C + 1, NWIs}),
                                         NNS
                                 end; 
                             {TaskItem, NPIs} ->
                                 NNWIs = [TaskItem|NWIs],
-                                message_monitor(Monitor, From, {C + 1,NNWIs}),
-                                add_task(TaskItem, TaskHandler, ReplyHandler, Monitor, From,
+                                add_task(TaskItem, TaskHandler, ReplyHandler, From,
                                          NS#state{working = NNWIs, pending = NPIs})
                         end
                 end
         end,
-    case TaskHandler(Item) of
+    case apply_task_handler(TaskHandler, Item, From) of
         MRef when is_reference(MRef) ->
             atask_gen_server:wait_reply(Callback, MRef, #state.callbacks, State);
         Other ->
