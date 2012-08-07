@@ -9,7 +9,7 @@
 -module(atask_gen_server).
 
 %% API
--export([call/2, message/2]).
+-export([call/2, message/2, reply_async/4]).
 -export([wait_reply/4, wait_reply/5, handle_reply/3]).
 -export([state/1]).
 
@@ -22,6 +22,13 @@ call(Process, Request) ->
 
 message({PId, MRef}, Message) ->
     PId ! {message, MRef, Message}.
+
+reply_async(MRef, From, Offset, State) ->
+    wait_reply(
+      fun(Reply, S) ->
+              gen_server:reply(From, Reply),
+              S
+      end, MRef, Offset, State).
 
 wait_reply(Callback, MRef, Offset, State) ->
     wait_reply(Callback, MRef, Offset, State, infinity).
