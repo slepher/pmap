@@ -88,8 +88,10 @@ call({global, _Name}=Process, Label, Request) ->
 call({Name, Node}, Label, Request) when Node =:= node() ->
     call(Name, Label, Request);
 %% Remote by name
-call({_Name, Node}=Process, Label, Request) when is_atom(Node) ->
-    do_call(Process, Label, Request).
+call({Name, Node}=Process, Label, Request) when is_atom(Name), is_atom(Node) ->
+    do_call(Process, Label, Request);
+call(Name, _Label, _Request) ->
+    {error, {invalid_process_name, Name}}.
 
 %%--------------------------------------------------------------------
 %% @doc
