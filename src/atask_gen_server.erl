@@ -37,7 +37,9 @@ wait_reply(Callback, MRef, Offset, State, Timeout) when is_reference(MRef) ->
     NCallback = atask:wait_reply(Callback, MRef, Timeout),
     Callbacks = element(Offset, State),
     NCallbacks = dict:store(MRef, NCallback, Callbacks),
-    setelement(Offset, State, NCallbacks).
+    setelement(Offset, State, NCallbacks);
+wait_reply(Callback, Reply, _Offset, State, _Timeout) ->
+    Callback(Reply, State).
 
 handle_reply({message, MRef, Message}, Offset, State) when is_reference(MRef) ->
     StateRec = element(1, State),
