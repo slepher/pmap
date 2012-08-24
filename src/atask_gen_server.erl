@@ -10,7 +10,7 @@
 
 %% API
 -export([call/2, message/2, reply_async/4]).
--export([wait_reply/4, wait_reply/5, handle_reply/3]).
+-export([wait_reply/4, wait_reply/5, handle_reply/3, pure_handle_reply/3]).
 -export([state/1]).
 
 %%%===================================================================
@@ -41,27 +41,30 @@ wait_reply(Callback, MRef, Offset, State, Timeout) when is_reference(MRef) ->
 wait_reply(Callback, Reply, _Offset, State, _Timeout) ->
     Callback(Reply, State).
 
-handle_reply({message, MRef, Message}, Offset, State) when is_reference(MRef) ->
+handle_reply(Reply, Offset, State) ->
     StateRec = element(1, State),
-    Callbacks = element(Offset, State),
-    NState = 
-        case dict:find(MRef, Callbacks) of
-            {ok, Callback} ->
-                Callback({message, Message}, State);
-            error ->
-                State
-        end,
+    NState = pure_handle_reply(Reply, Offset, State),
     case element(1, NState) of
         StateRec ->
             {noreply, NState};
         _ ->
             NState
-    end;
-handle_reply({MRef, Reply}, Offset, State) when is_reference(MRef) ->
-    do_handle_reply({MRef, Reply}, Offset, State);
+    end.
 
-handle_reply({'DOWN', MRef, Type, Object, Reason}, Offset, State) when is_reference(MRef) ->
-    do_handle_reply({'DOWN', MRef, Type, Object, Reason}, Offset, State).
+pure_handle_reply({message, MRef, Message}, Offset, State) when is_reference(MRef) ->
+    Callbacks = element(Offset, State),
+    case dict:find(MRef, Callbacks) of
+        {ok, Callback} ->
+            Callback({message, Message}, State);
+        error ->
+            State
+    end;
+
+pure_handle_reply({MRef, Reply}, Offset, State) when is_reference(MRef) ->
+    do_pure_handle_reply({MRef, Reply}, Offset, State);
+
+pure_handle_reply({'DOWN', MRef, Type, Object, Reason}, Offset, State) when is_reference(MRef) ->
+    do_pure_handle_reply({'DOWN', MRef, Type, Object, Reason}, Offset, State).
 
 state(Process) when is_atom(Process) ->
     case whereis(Process) of
@@ -82,8 +85,7 @@ state(PId) when is_pid(PId) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-do_handle_reply(Reply, Offset, State) ->
-    StateRec = element(1, State),
+do_pure_handle_reply(Reply, Offset, State) ->
     F = fun(MRef) ->
                 Callbacks = element(Offset, State),
                 case dict:find(MRef, Callbacks) of
@@ -94,10 +96,4 @@ do_handle_reply(Reply, Offset, State) ->
                         {error, {noreply, State}}
                 end
         end,
-    NState = atask:handle_reply(Reply, F),
-    case element(1, NState) of
-        StateRec ->
-            {noreply, NState};
-        _ ->
-            NState
-    end.
+    atask:handle_reply(Reply, F).
