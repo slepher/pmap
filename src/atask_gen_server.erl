@@ -93,7 +93,7 @@ do_pure_handle_reply(Reply, Offset, State) ->
                         NCallbacks = dict:erase(MRef, Callbacks),
                         {ok, {Callback, setelement(Offset, State, NCallbacks)}};
                     error ->
-                        {error, {noreply, State}}
+                        {error, State}
                 end
         end,
     atask:handle_reply(Reply, F).
