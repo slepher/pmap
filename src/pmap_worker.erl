@@ -27,10 +27,14 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+task(_TaskHandler, _ReplyHandler, Acc0, [], _Limit) ->
+    Acc0;
 task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     atask:start_and_action(fun start/0, fun gen_server:call/3,
                            [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, infinity]).
 
+async_task(_TaskHandler, _ReplyHandler, Acc0, [], _Limit) ->
+    Acc0;
 async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     atask:start_and_action(fun start/0, fun atask_gen_server:call/2,
                            [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit}]).
