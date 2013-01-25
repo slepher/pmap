@@ -36,7 +36,7 @@ wait_reply(Callback, MRef, Offset, State) ->
 wait_reply(Callback, MRef, Offset, State, Timeout) when is_reference(MRef) ->
     NCallback = atask:wait_reply(Callback, MRef, Timeout),
     Callbacks = element(Offset, State),
-    NCallbacks = dict:store(MRef, NCallback, Callbacks),
+    NCallbacks = store(MRef, NCallback, Callbacks),
     setelement(Offset, State, NCallbacks);
 wait_reply(Callback, Reply, _Offset, State, _Timeout) ->
     Callback(Reply, State).
@@ -53,7 +53,7 @@ handle_reply(Reply, Offset, State) ->
 
 pure_handle_reply({message, MRef, Message}, Offset, State) when is_reference(MRef) ->
     Callbacks = element(Offset, State),
-    case dict:find(MRef, Callbacks) of
+    case find(MRef, Callbacks) of
         {ok, Callback} ->
             Callback({message, Message}, State);
         error ->
@@ -88,12 +88,31 @@ state(PId) when is_pid(PId) ->
 do_pure_handle_reply(Reply, Offset, State) ->
     F = fun(MRef) ->
                 Callbacks = element(Offset, State),
-                case dict:find(MRef, Callbacks) of
+                case find(MRef, Callbacks) of
                     {ok, Callback} ->
-                        NCallbacks = dict:erase(MRef, Callbacks),
+                        NCallbacks = erase(MRef, Callbacks),
                         {ok, {Callback, setelement(Offset, State, NCallbacks)}};
                     error ->
                         {error, State}
                 end
         end,
     atask:handle_reply(Reply, F).
+
+
+store(Key, Value, Dict) when is_list(Dict) ->
+    orddict:store(Key, Value, Dict);
+store(Key, Value, Dict) ->
+    dict:store(Key, Value, Dict).
+
+find(Key, Dict) when is_list(Dict) ->
+    orddict:find(Key, Dict);
+find(Key, Dict) ->
+    dict:find(Key, Dict).
+
+erase(Key, Dict) when is_list(Dict) ->
+    orddict:erase(Key, Dict);
+erase(Key, Dict) ->
+    dict:erase(Key, Dict).
+
+
+

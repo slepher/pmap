@@ -12,7 +12,7 @@
 -export([start_and_action/3]).
 -export([y0/1, y1/1, y2/1]).
 -export([wait_reply/3, handle_reply/2]).
--export([call/3, wait_call/3]).
+-export([call/3, wait_call/2]).
 
 %%%===================================================================
 %%% API
@@ -109,20 +109,11 @@ do_call(Process, Label, Request) ->
     erlang:send(Process, {Label, {self(), Mref}, Request}, [noconnect]),
     Mref.
 
-wait_call(Process, MRef, Timeout) ->
-    Node = 
-        case Process of
-            {_S, N} when is_atom(N) ->
-                N;
-            _ when is_pid(Process) ->
-                node(Process)
-        end,
+wait_call(MRef, Timeout) ->
     receive
         {Mref, Reply} ->
             erlang:demonitor(Mref, [flush]),
             {ok, Reply};
-        {'DOWN', MRef, _, _, noconnection} ->
-            exit({nodedown, Node});
         {'DOWN', MRef, _, _, Reason} ->
             exit(Reason)
     after Timeout ->
