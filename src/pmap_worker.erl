@@ -246,8 +246,8 @@ add_task(Item, TaskHandler, ReplyHandler, From, State) ->
         end,
     case apply_task_handler(TaskHandler, Item, From) of
         % for old functions
-        %{ok, MRef} when is_reference(MRef) ->
-        %    atask_gen_server:wait_reply(Callback, MRef, #state.callbacks, State);
+        {ok, MRef} when is_reference(MRef) ->
+            atask_gen_server:wait_reply(Callback, MRef, #state.callbacks, State);
         MRef when is_reference(MRef) ->
             atask_gen_server:wait_reply(Callback, MRef, #state.callbacks, State);
         Other ->
