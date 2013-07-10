@@ -33,6 +33,8 @@ reply_async(MRef, From, Offset, State) ->
 wait_reply(Callback, MRef, Offset, State) ->
     wait_reply(Callback, MRef, Offset, State, infinity).
 
+wait_reply(Callback, {ok, MRef}, Offset, State, Timeout) when is_reference(MRef) ->
+    wait_reply(Callback, MRef, Offset, State, Timeout);
 wait_reply(Callback, MRef, Offset, State, Timeout) when is_reference(MRef) ->
     NCallback = atask:wait_reply(Callback, MRef, Timeout),
     Callbacks = element(Offset, State),
