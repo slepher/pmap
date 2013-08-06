@@ -13,6 +13,7 @@
 -export([y0/1, y1/1, y2/1]).
 -export([wait_reply/3, handle_reply/2]).
 -export([call/3, wait_call/2]).
+-export([execute_callback/3]).
 
 %%%===================================================================
 %%% API
@@ -44,20 +45,35 @@ wait_reply(Callback, MRef, Timeout) when is_reference(MRef), is_integer(Timeout)
     Timer = erlang:send_after(Timeout, self(), {MRef, {error, timeout}}),
     fun(R, S) ->
             erlang:cancel_timer(Timer),
-            Callback(R, S)
+            execute_callback(Callback, R, S)
     end.
 
 handle_reply({MRef, Reply}, UpdateState) when is_reference(MRef) ->
     erlang:demonitor(MRef, [flush]),
     case UpdateState(MRef) of
         {ok, {Callback, NState}} ->
-            Callback(Reply, NState);
+            execute_callback(Callback, Reply, NState);
         {error, Response} ->
             Response
     end;
 
 handle_reply({'DOWN', MRef, _, _, Reason}, UpdateState) when is_reference(MRef) ->
     handle_reply({MRef, {error, {no_such_process, Reason}}}, UpdateState).
+
+execute_callback(Callback, Reply, State) ->
+    case erlang:fun_info(Callback, arity) of
+        {arity, 1} ->
+            case Callback(Reply) of
+                NCallback when is_function(NCallback) ->
+                    NCallback(State);
+                _Other ->
+                    State   
+            end;
+        {arity, 2} ->
+            Callback(Reply, State);
+        {arity, N} ->
+            exit({invalid_callback, Callback, N})
+    end.
 
 %%-----------------------------------------------------------------
 %% Makes a asynchronous call to a generic process.

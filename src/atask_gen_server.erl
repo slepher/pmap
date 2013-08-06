@@ -25,20 +25,6 @@ call(Process, Request) ->
 message({PId, MRef}, Message) ->
     PId ! {message, MRef, Message}.
 
-bind(Callback, Async, NextAsyncFun, Offset, State) ->
-    atask_gen_server:wait_reply(
-      Async,
-      fun({ok, Val}) ->
-              atask_gen_server:wait_reply(
-                NextAsyncFun(),
-                Callback({ok, Val})
-               );
-         ({error, Reason})->
-              Callback({error, Reason}),
-              State
-      end, Offset, State).
-
-
 bindl(Callback, _Async, [], Acc) ->
     Callback(ok, ok, Acc),
     fun(_Offset, State) ->
@@ -53,9 +39,6 @@ bindl(Callback, Async, [Arg|T], Acc) ->
          ({error, Reason}) ->
               Callback(Arg, {error, Reason}, Acc)
       end).
-
-return(Fun, Offset, State) ->
-    Fun(Offset, State).
 
 reply_async(MRef, From, Offset, State) ->
     wait_reply(
@@ -122,7 +105,8 @@ state(Process) when is_atom(Process) ->
             state(PId)
     end;
 state(PId) when is_pid(PId) ->
-    element(2, lists:nth(1, element(2, lists:nth(3, lists:nth(5, element(4, sys:get_status(PId))))))).
+    Status = sys:get_status(PId),
+    element(2, lists:nth(1, element(2, lists:nth(3, lists:nth(5, element(4, Status)))))).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -133,19 +117,17 @@ state(PId) when is_pid(PId) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-do_pure_handle_reply(Reply, Offset, State) ->
-    F = fun(MRef) ->
-                Callbacks = element(Offset, State),
-                case find(MRef, Callbacks) of
-                    {ok, Callback} ->
-                        NCallbacks = erase(MRef, Callbacks),
-                        {ok, {Callback, setelement(Offset, State, NCallbacks)}};
-                    error ->
-                        {error, State}
-                end
-        end,
-    atask:handle_reply(Reply, F).
-
+do_pure_handle_reply({MRef, Reply}, Offset, State) ->
+    erlang:demonitor(MRef, [flush]),
+    Callbacks = element(Offset, State),
+    case find(MRef, Callbacks) of
+        {ok, Callback} ->
+            NCallbacks = erase(MRef, Callbacks),
+            NState = setelement(Offset, State, NCallbacks),
+            execute_callback(Callback, Reply, Offset, NState);
+        error ->
+            State
+    end.
 
 store(Key, Value, Dict) when is_list(Dict) ->
     orddict:store(Key, Value, Dict);
