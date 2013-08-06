@@ -163,7 +163,7 @@ erase(Key, Dict) ->
     dict:erase(Key, Dict).
 
 execute_callback(Callback, Reply, Offset, State) ->
-    case erlang:fun_info(Callback) of
+    case erlang:fun_info(Callback, arity) of
         {arity, 1} ->
             case Callback(Reply) of
                 NCallback when is_function(NCallback) ->
