@@ -10,6 +10,7 @@
 
 %% API
 -export([call/2, message/2, reply_async/4]).
+-export([bindl/4]).
 -export([wait_reply/2, wait_reply/3, wait_reply/4, wait_reply/5,
          handle_reply/3, pure_handle_reply/3]).
 -export([state/1]).
