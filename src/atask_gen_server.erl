@@ -72,10 +72,7 @@ wait_reply(MRef, Callback, Timeout) ->
             wait_reply(MRef, Callback, Offset, State, Timeout)
     end.
 
-wait_reply(MRef, Callback, Offset, State) when is_reference(MRef), is_function(Callback) ->
-    wait_reply(Callback, MRef, Offset, State, infinity);
-
-wait_reply(Callback, MRef, Offset, State) when is_reference(MRef), is_function(Callback) ->
+wait_reply(MRef, Callback, Offset, State) ->
     wait_reply(Callback, MRef, Offset, State, infinity).
 
 wait_reply(Callback, {ok, MRef}, Offset, State, Timeout) when is_reference(MRef) ->
