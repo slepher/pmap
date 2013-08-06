@@ -35,7 +35,7 @@ bindl(Callback, Async, [Arg|T], Acc) ->
       Async(Arg), 
       fun({ok, Val}) ->
               NAcc = Callback(Arg, {ok, Val}, Acc),
-              bindl(Async, Callback, T, NAcc);
+              bindl(Callback, Async, T, NAcc);
          ({error, Reason}) ->
               Callback(Arg, {error, Reason}, Acc)
       end).
