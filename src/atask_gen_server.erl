@@ -69,7 +69,9 @@ wait_reply(Callback, MRef, Offset, State, Timeout)
     Callbacks = element(Offset, State),
     NCallbacks = store(MRef, NCallback, Callbacks),
     setelement(Offset, State, NCallbacks);
-wait_reply(Callback, Reply, Offset, State, _Timeout) ->
+wait_reply(Reply, Callback, Offset, State, _Timeout) when is_function(Callback) ->
+    execute_callback(Callback, Reply, Offset, State).
+wait_reply(Callback, Reply, Offset, State, _Timeout) when is_function(Callback) ->
     execute_callback(Callback, Reply, Offset, State).
 
 handle_reply(Reply, Offset, State) ->
@@ -92,10 +94,19 @@ pure_handle_reply({message, MRef, Message}, Offset, State) when is_reference(MRe
     end;
 
 pure_handle_reply({MRef, Reply}, Offset, State) when is_reference(MRef) ->
-    do_pure_handle_reply({MRef, Reply}, Offset, State);
+    erlang:demonitor(MRef, [flush]),
+    Callbacks = element(Offset, State),
+    case find(MRef, Callbacks) of
+        {ok, Callback} ->
+            NCallbacks = erase(MRef, Callbacks),
+            NState = setelement(Offset, State, NCallbacks),
+            execute_callback(Callback, Reply, Offset, NState);
+        error ->
+            State
+    end;
 
-pure_handle_reply({'DOWN', MRef, Type, Object, Reason}, Offset, State) when is_reference(MRef) ->
-    do_pure_handle_reply({'DOWN', MRef, Type, Object, Reason}, Offset, State).
+pure_handle_reply({'DOWN', MRef, _, _, Reason}, Offset, State) when is_reference(MRef) ->
+    pure_handle_reply({MRef, {error, {no_such_process, Reason}}}, Offset, State).
 
 state(Process) when is_atom(Process) ->
     case whereis(Process) of
@@ -117,18 +128,6 @@ state(PId) when is_pid(PId) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-do_pure_handle_reply({MRef, Reply}, Offset, State) ->
-    erlang:demonitor(MRef, [flush]),
-    Callbacks = element(Offset, State),
-    case find(MRef, Callbacks) of
-        {ok, Callback} ->
-            NCallbacks = erase(MRef, Callbacks),
-            NState = setelement(Offset, State, NCallbacks),
-            execute_callback(Callback, Reply, Offset, NState);
-        error ->
-            State
-    end.
-
 store(Key, Value, Dict) when is_list(Dict) ->
     orddict:store(Key, Value, Dict);
 store(Key, Value, Dict) ->
