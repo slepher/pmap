@@ -70,7 +70,7 @@ wait_reply(Callback, MRef, Offset, State, Timeout)
     NCallbacks = store(MRef, NCallback, Callbacks),
     setelement(Offset, State, NCallbacks);
 wait_reply(Reply, Callback, Offset, State, _Timeout) when is_function(Callback) ->
-    execute_callback(Callback, Reply, Offset, State).
+    execute_callback(Callback, Reply, Offset, State);
 wait_reply(Callback, Reply, Offset, State, _Timeout) when is_function(Callback) ->
     execute_callback(Callback, Reply, Offset, State).
 
