@@ -35,7 +35,14 @@ bindl(Callback, Async, [Arg|T], Acc) ->
       Async(Arg), 
       fun({ok, Val}) ->
               NAcc = Callback(Arg, {ok, Val}, Acc),
-              bindl(Callback, Async, T, NAcc);
+              case NAcc of
+                  stop ->
+                      ok;
+                  NAcc ->
+                      bindl(Callback, Async, T, NAcc)
+              end;
+         ({message, Message}) ->
+              Callback(Arg, {message, Message}, Acc);
          ({error, Reason}) ->
               Callback(Arg, {error, Reason}, Acc)
       end).
