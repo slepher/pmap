@@ -12,6 +12,7 @@
 -export([call/2, message/2, reply_async/4]).
 -export([bindl/4]).
 -export([wait_reply/2, wait_reply/3, wait_reply/4, wait_reply/5,
+         wait_call/3, wait_call/4,
          handle_reply/3, pure_handle_reply/3]).
 -export([state/1]).
 
@@ -31,8 +32,17 @@ bindl(Callback, _Async, [], Acc) ->
             State
     end;
 bindl(Callback, Async, [Arg|T], Acc) ->
+    MRef = 
+        case erlang:fun_info(Async, arity) of
+            {arrity, 1} ->
+                {ok, Async(Arg)};
+            {arity, 2} ->
+                {ok, Async(Arg, Acc)};
+            {arity, N} ->
+                {error, {invalid_async_fun, N}}
+        end,
     atask_gen_server:wait_reply(
-      Async(Arg), 
+      MRef,
       fun({ok, Val}) ->
               NAcc = Callback(Arg, {ok, Val}, Acc),
               case NAcc of
@@ -46,13 +56,19 @@ bindl(Callback, Async, [Arg|T], Acc) ->
          ({error, Reason}) ->
               Callback(Arg, {error, Reason}, Acc)
       end).
-
+            
 reply_async(MRef, From, Offset, State) ->
     wait_reply(
       fun(Reply, S) ->
               gen_server:reply(From, Reply),
               S
       end, MRef, Offset, State).
+
+wait_call(Fun, Process, Message) ->
+    wait_reply(call(Process, Message), Fun).
+
+wait_call(Fun, Process, Message, Timeout) ->
+    wait_reply(call(Process, Message), Fun, Timeout).
 
 wait_reply(MRef, Callback) ->
     wait_reply(MRef, Callback, infinity).
