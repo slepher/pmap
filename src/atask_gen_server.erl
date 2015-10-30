@@ -38,7 +38,7 @@ bindl(Callback, _Async, [], Acc) ->
             State
     end;
 bindl(Callback, Async, [Arg|T], Acc) ->
-    MRef = 
+    MRef =
         case erlang:fun_info(Async, arity) of
             {arrity, 1} ->
                 {ok, Async(Arg)};
@@ -62,7 +62,7 @@ bindl(Callback, Async, [Arg|T], Acc) ->
          ({error, Reason}) ->
               Callback(Arg, {error, Reason}, Acc)
       end).
-            
+
 reply_async(MRef, From, Offset, State) ->
     wait_reply(
       fun(Reply, S) ->
@@ -92,7 +92,7 @@ wait_reply(Callback, {ok, MRef}, Offset, State, Timeout) when is_reference(MRef)
 wait_reply(MRef, Callback, Offset, State, Timeout)
   when is_reference(MRef), is_function(Callback) ->
     wait_reply(Callback, MRef, Offset, State, Timeout);
-wait_reply(Callback, MRef, Offset, State, Timeout) 
+wait_reply(Callback, MRef, Offset, State, Timeout)
   when is_reference(MRef), is_function(Callback) ->
     NCallback = atask:wait_reply(Callback, MRef, Timeout),
     Callbacks = element(Offset, State),
@@ -157,16 +157,22 @@ state(PId) when is_pid(PId) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+store(Key, Value, Dict) when is_map(Dict) ->
+    maps:put(Key, Value, Dict);
 store(Key, Value, Dict) when is_list(Dict) ->
     orddict:store(Key, Value, Dict);
 store(Key, Value, Dict) ->
     dict:store(Key, Value, Dict).
 
+find(Key, Dict) when is_map(Dict) ->
+    maps:find(Key, Dict);
 find(Key, Dict) when is_list(Dict) ->
     orddict:find(Key, Dict);
 find(Key, Dict) ->
     dict:find(Key, Dict).
 
+erase(Key, Dict) when is_map(Dict) ->
+    maps:remove(Key, Dict);
 erase(Key, Dict) when is_list(Dict) ->
     orddict:erase(Key, Dict);
 erase(Key, Dict) ->
@@ -179,11 +185,10 @@ execute_callback(Callback, Reply, Offset, State) ->
                 NCallback when is_function(NCallback) ->
                     NCallback(Offset, State);
                 _Other ->
-                    State   
+                    State
             end;
         {arity, 2} ->
             Callback(Reply, State);
         {arity, N} ->
             exit({invalid_callback, Callback, N})
     end.
-            
