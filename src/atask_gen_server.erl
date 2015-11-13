@@ -14,6 +14,7 @@
 -export([wait_reply/2, wait_reply/3, wait_reply/4, wait_reply/5,
          wait_call/3, wait_call/4,
          handle_reply/3, pure_handle_reply/3]).
+-export([update_state/3]).
 -export([state/1]).
 
 %%%===================================================================
@@ -31,6 +32,18 @@ ok_bind() ->
                 State
         end,
     F.
+
+update_state(Bind, Offset, State) when is_function(Bind) ->
+    Bind(Offset, State);
+update_state(NState, _Offset, State) when is_tuple(NState) ->
+    case element(1, NState) of
+        state ->
+            NState;
+        _ ->
+            State
+    end;
+update_state(_Other, _Offset, State) ->
+    State.
 
 bindl(Callback, _Async, [], Acc) ->
     Callback(ok, ok, Acc),
@@ -188,7 +201,12 @@ execute_callback(Callback, Reply, Offset, State) ->
                     State
             end;
         {arity, 2} ->
-            Callback(Reply, State);
+            case Callback(Reply, State) of
+                NCallback when is_function(NCallback) ->
+                    NCallback(Offset, State);
+                NState ->
+                    NState
+            end;
         {arity, N} ->
             exit({invalid_callback, Callback, N})
     end.
