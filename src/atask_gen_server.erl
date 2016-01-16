@@ -10,7 +10,7 @@
 
 %% API
 -export([call/2, message/2, reply_async/4]).
--export([bindl/4, ok_bind/0]).
+-export([bindl/4, ok_bind/0, ok_bind/1]).
 -export([wait_reply/2, wait_reply/3, wait_reply/4, wait_reply/5,
          wait_call/3, wait_call/4,
          handle_reply/3, pure_handle_reply/3]).
@@ -32,6 +32,11 @@ ok_bind() ->
                 State
         end,
     F.
+
+ok_bind(Fun) ->
+    fun(_Offset, State) ->
+                Fun(State)
+    end.
 
 update_state(Bind, Offset, State) when is_function(Bind) ->
     Bind(Offset, State);
