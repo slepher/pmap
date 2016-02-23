@@ -14,7 +14,7 @@
 -export([wait_reply/2, wait_reply/3, wait_reply/4, wait_reply/5,
          wait_call/3, wait_call/4,
          handle_reply/3, pure_handle_reply/3]).
--export([update_state/3]).
+-export([update_state/3, update_bind/2]).
 -export([state/1]).
 
 %%%===================================================================
@@ -36,6 +36,12 @@ ok_bind() ->
 ok_bind(Fun) ->
     fun(_Offset, State) ->
                 Fun(State)
+    end.
+
+update_bind(Fun, Bind) ->
+    fun(Callback, State) ->
+            NState = Fun(State),
+            Bind(Callback, NState)
     end.
 
 update_state(Bind, Offset, State) when is_function(Bind) ->

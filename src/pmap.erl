@@ -81,7 +81,6 @@ succfail_callback(Item, Reply, {Succs, Fails}) ->
         {error, Reason} ->
             {Succs, [{Item, Reason}|Fails]}
     end.
-
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
