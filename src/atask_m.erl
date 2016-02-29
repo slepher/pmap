@@ -17,8 +17,8 @@
 -module(atask_m).
 
 -behaviour(monad).
--export(['>>='/2, '>>'/2, return/1, fail/1]).
--export([exec/2, wait_reply/1]).
+-export(['>>='/2, return/1, fail/1]).
+-export([exec/2, exec/4, wait_reply/1]).
 
 %% This is really instance (Error e) => Monad (Either e) with 'error'
 %% for Left and 'ok' for Right.
@@ -51,10 +51,7 @@
                                 Callback(NReply)
                         end)
               end)
-    end.
-
-'>>'(M, NM) -> '>>='(M, fun(_Reply) -> NM end).
-    
+    end.    
 
 return(X) -> fun(Callback) -> Callback(X) end.
                        
@@ -67,3 +64,7 @@ wait_reply(Async) ->
 
 exec(M, Callback) ->
     M(Callback).
+
+exec(M, Callback, Offset, State) ->
+    Bind = exec(M, Callback),
+    atask_gen_server:update_state(Bind, Offset, State).

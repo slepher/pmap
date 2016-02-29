@@ -65,6 +65,17 @@ transform_statement({call, Line, {remote, Line1, {atom, Line2, atask_gen_server}
         end,
     {call, Line, {remote, Line1, {atom, Line2, atask_gen_server},
                   {atom, Line3, update_state}}, NArguments};
+transform_statement({call, Line, {remote, Line1, {atom, Line2, atask_m},
+                                  {atom, Line3, exec}}, Arguments}) ->
+    NArguments = 
+        case Arguments of
+            [Monad, Callback, State] ->
+                [Monad, Callback, {record_index,Line,state,{atom,Line,callbacks}}, State];
+            Other ->
+                Other
+        end,
+    {call, Line, {remote, Line1, {atom, Line2, atask_m},
+                  {atom, Line3, exec}}, NArguments};
 transform_statement(Stmt) when is_tuple(Stmt) ->
     list_to_tuple(transform_statement(tuple_to_list(Stmt)));
 transform_statement(Stmt) when is_list(Stmt) ->
