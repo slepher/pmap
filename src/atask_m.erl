@@ -34,7 +34,12 @@
 '>>='(M, Fun) ->
     fun(Callback) ->
             M(
-              fun({ok, Reply}) ->
+              fun(ok) ->
+                      (Fun(ok))(
+                        fun(NReply) ->
+                                Callback(NReply)
+                        end);    
+                 ({ok, Reply}) ->
                       (Fun(Reply))(
                         fun(NReply) ->
                                 Callback(NReply)
