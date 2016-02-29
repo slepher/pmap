@@ -34,18 +34,22 @@
 '>>='(M, Fun) ->
     fun(Callback) ->
             M(
-              fun(ok) ->
-                      (Fun(ok))(
+              fun({error, Reason}) ->
+                      Callback({error, Reason});
+                 (Reply) ->
+                      Val = 
+                          case Reply of
+                              {ok, R} ->
+                                  R;
+                              ok ->
+                                  ok;
+                              Other -> 
+                                  Other
+                          end,
+                      (Fun(Val))(
                         fun(NReply) ->
                                 Callback(NReply)
-                        end);    
-                 ({ok, Reply}) ->
-                      (Fun(Reply))(
-                        fun(NReply) ->
-                                Callback(NReply)
-                        end);
-                 ({error, Reason}) ->
-                      Callback({error, Reason})
+                        end)
               end)
     end.
 
