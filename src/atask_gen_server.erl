@@ -34,14 +34,19 @@ ok_bind() ->
     F.
 
 ok_bind(Fun) ->
-    fun(_Offset, State) ->
-                Fun(State)
+    fun(Offset, State) ->
+            case Fun(State) of
+                Bind when is_function(Bind) ->
+                    Bind(Offset, State);
+                NState ->
+                    NState
+            end
     end.
 
 update_bind(Fun, Bind) ->
-    fun(Callback, State) ->
+    fun(Offset, State) ->
             NState = Fun(State),
-            Bind(Callback, NState)
+            Bind(Offset, NState)
     end.
 
 update_state(Bind, Offset, State) when is_function(Bind) ->
