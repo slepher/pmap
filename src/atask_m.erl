@@ -36,6 +36,8 @@
             M(
               fun({error, Reason}) ->
                       Callback({error, Reason});
+                 ({message, Message}) ->
+                      Callback({message, Message});
                  (Reply) ->
                       Val = 
                           case Reply of
