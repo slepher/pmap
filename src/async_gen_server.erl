@@ -54,7 +54,9 @@ handle_reply({MRef, Reply}, Offset, State) when is_reference(MRef) ->
             State
     end;
 handle_reply({'DOWN', MRef, _, _, Reason}, Offset, State) when is_reference(MRef) ->
-    handle_reply({MRef, {error, {process_down, Reason}}}, Offset, State).
+    handle_reply({MRef, {error, {process_down, Reason}}}, Offset, State);
+handle_reply(_Info, _Offset, _State) ->
+    unhandled.
 
 %%%===================================================================
 %%% Internal functions
