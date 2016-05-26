@@ -3,3 +3,5 @@ ebin/*.app
 test/*.beam
 logs
 deps
+.rebar
+.edts
