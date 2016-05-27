@@ -126,20 +126,18 @@ wait(Monad, Callback, State) ->
 wait_receive({store, MRef, Callback, State}) ->
     receive 
         Msg ->
-            Callbacks = maps:from_list([{MRef, Callback}]),
-            case handle_reply(Msg, Callbacks) of
-                unhandled ->
-                    wait_receive({store, MRef, Callback, State});
-                error ->
-                    wait_receive({store, MRef, Callback, State});
-                {Reply, Callback, NCallbacks} ->
-                    case maps:to_list(NCallbacks) of
-                        [] ->
+            case info_to_reply(Msg) of
+                {MRef, Reply} ->
+                    case Reply of
+                        {message, _Message} ->
                             NState = execute_callback(Callback, Reply, State),
-                            wait_receive(NState);
-                        _ ->
-                            wait_receive({store, MRef, Callback, State})
-                    end
+                            wait_receive({store, MRef, Callback, NState});
+                        Reply ->
+                            NState = execute_callback(Callback, Reply, State),
+                            wait_receive(NState)
+                    end;
+                _ ->
+                    wait_receive({store, MRef, Callback, State})
             end
     end;
 wait_receive(State) ->
@@ -178,6 +176,15 @@ execute_callback(Callback, Value, State) when is_function(Callback) ->
     end;
 execute_callback(Callback, _Value, _State) ->
     exit({invalid_callback, Callback}).
+
+info_to_reply({message, MRef, Message}) when is_reference(MRef) ->
+    {MRef, {message, Message}};
+info_to_reply({MRef, Reply}) when is_reference(MRef) ->
+    {MRef, Reply};
+info_to_reply({'DOWN', MRef, _, _, Reason}) when is_reference(MRef) ->
+    {MRef, {error, {process_down, Reason}}};
+info_to_reply(_Info) ->
+    unhandled.
 
 handle_reply({message, MRef, Message}, Callbacks) when is_reference(MRef) ->
     case find(MRef, Callbacks) of
