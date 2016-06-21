@@ -123,7 +123,8 @@ wait(Monad, Callback, State) ->
     NState = exec(Monad, Callback, StoreCallbacks, State),
     wait_receive(NState).
 
-wait_receive({store, MRef, Callback, State}) ->
+
+wait_receive({wait, MRef, Callback, State}) ->
     receive 
         Msg ->
             case info_to_reply(Msg) of
@@ -131,13 +132,13 @@ wait_receive({store, MRef, Callback, State}) ->
                     case Reply of
                         {message, _Message} ->
                             NState = execute_callback(Callback, Reply, State),
-                            wait_receive({store, MRef, Callback, NState});
+                            wait_receive({wait, MRef, Callback, NState});
                         Reply ->
                             NState = execute_callback(Callback, Reply, State),
                             wait_receive(NState)
                     end;
                 _ ->
-                    wait_receive({store, MRef, Callback, State})
+                    wait_receive({wait, MRef, Callback, State})
             end
     end;
 wait_receive(State) ->
@@ -216,7 +217,7 @@ state_store_callback(Offset) ->
 
 wait_store_callbacks() ->
     fun(MRef, Callback, State) ->
-            {store, MRef, Callback, State}
+            {wait, MRef, Callback, State}
     end.
 
 store(Key, Value, Dict) when is_map(Dict) ->
