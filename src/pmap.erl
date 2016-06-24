@@ -16,6 +16,7 @@
 -export([async_task/2, async_task/3, async_task/4, async_task/5]).
 -export([monitor_task/2, monitor_task/3, monitor_task/5, status/1]).
 -export([simple_callback/3, succfail_callback/3]).
+-export([async_single_task/2, async_single_task/3]).
 
 %%%===================================================================
 %%% API
@@ -46,6 +47,23 @@ task(TaskHandler, ReplyHandler, Acc0, Items) ->
 
 task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     pmap_worker:task(TaskHandler, ReplyHandler, Acc0, Items, Limit).
+
+async_single_task(Request, ReplyHandler) ->
+    async_single_task(Request, ReplyHandler, undefined).
+
+async_single_task(Request, ReplyHandler, Acc0) ->
+    async_task(
+      fun(_) ->
+              Request()
+      end,
+      fun(_, Reply, Acc) ->
+              case erlang:fun_info(ReplyHandler, arity) of
+                  {arity, 1} ->
+                      ReplyHandler(Reply);
+                  {arity, 2} ->
+                      ReplyHandler(Reply, Acc)
+              end
+      end, Acc0, [ok]).
 
 async_task(TaskHandler, Items) ->
     async_task(TaskHandler, Items, 0).
