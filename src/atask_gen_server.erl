@@ -6,6 +6,7 @@
 %%% @end
 %%% Created : 23 Mar 2012 by Chen Slepher <slepher@larry.wd201201>
 %%%-------------------------------------------------------------------
+%%% depricated
 -module(atask_gen_server).
 
 %% API

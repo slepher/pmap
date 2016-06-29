@@ -13,6 +13,7 @@
 
 -export(['>>='/2, return/1, fail/1]).
 -export([promise/1, promise/2]).
+-export([update_callback/2]).
 -export([get_state/0, put_state/1, update_state/1]).
 -export([exec/4]).
 -export([message/2]).
@@ -74,8 +75,14 @@ put_state(State) ->
 
 update_state(Fun) ->
     fun(Callback, _StoreCallback, State) ->
-            NState = Fun(State),
-            execute_callback(Callback, ok, NState)
+            case Fun(State) of
+                {ok, NState} ->
+                    execute_callback(Callback, ok, NState);
+                {error, Reason} ->
+                    execute_callback(Callback, {error, Reason}, State);
+                NState ->
+                    execute_callback(Callback, ok, NState)
+            end
     end.
 
 promise(MRef) ->
@@ -89,6 +96,12 @@ promise(MRef, Timeout) when is_reference(MRef) ->
 promise(Reply, _Timeout) ->
     fun(Callback, _StoreCallbacks, State) ->
             execute_callback(Callback, Reply, State)
+    end.
+
+update_callback(M, Updater) ->
+    fun(Callback, StoreCallbacks, State) ->
+            NCallback = Updater(Callback),
+            M(NCallback, StoreCallbacks, State)
     end.
 
 exec(M, Callback, StoreCallback, State) ->
@@ -110,8 +123,8 @@ handle_info(Info, Offset, State) ->
             execute_callback(Callback, Reply, NState)
     end.
 
-wait(Monad) ->
-    wait(Monad,
+wait(M) ->
+    wait(M,
          fun({message, _Message}, S) ->
                  S;
             (Reply, _S) ->
