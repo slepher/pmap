@@ -13,12 +13,13 @@
 
 -export(['>>='/2, return/1, fail/1]).
 -export([promise/1, promise/2]).
--export([update_callback/2]).
+-export([hook/1, update_callback/2]).
 -export([get_state/0, put_state/1, update_state/1]).
 -export([exec/4]).
 -export([message/2]).
 -export([then/4, handle_info/3]).
 -export([wait/1, wait/3]).
+-export([execute_callback/3]).
 
 %%%===================================================================
 %%% API
@@ -55,7 +56,7 @@
 
 return(A) -> 
     fun(Callback, _StoreCallback, State) -> 
-            execute_callback(Callback, A, State)
+            execute_callback(Callback, {ok, A}, State)
     end.
                        
 fail(X) -> 
@@ -97,6 +98,13 @@ promise(Reply, _Timeout) ->
     fun(Callback, _StoreCallbacks, State) ->
             execute_callback(Callback, Reply, State)
     end.
+
+hook(Hook) ->
+    fun(Callback, StoreCallback, State) ->
+            NCallback = Hook(Callback),
+            execute_callback(NCallback, StoreCallback, State)
+    end.
+    
 
 update_callback(M, Updater) ->
     fun(Callback, StoreCallbacks, State) ->
