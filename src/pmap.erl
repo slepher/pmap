@@ -14,6 +14,7 @@
 -export([map/2, map/3]).
 -export([task/2, task/3, task/4, task/5]).
 -export([async_task/2, async_task/3, async_task/4, async_task/5]).
+-export([promise_task/2, promise_task/3, promise_task/4, promise_task/5]).
 -export([monitor_task/2, monitor_task/3, monitor_task/5, status/1]).
 -export([simple_callback/3, succfail_callback/3]).
 -export([async_single_task/2, async_single_task/3]).
@@ -76,6 +77,18 @@ async_task(TaskHandler, ReplyHandler, Acc0, Items) ->
 
 async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     pmap_worker:async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit).
+
+promise_task(TaskHandler, Items) ->
+    promise_task(TaskHandler, Items, 0).
+
+promise_task(TaskHandler, Items, Limit) ->
+    promise_task(TaskHandler, fun simple_callback/3, [], Items, Limit).
+
+promise_task(TaskHandler, ReplyHandler, Acc0, Items) ->
+    promise_task(TaskHandler, ReplyHandler, Acc0, Items, 0).
+
+promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
+    pmap_worker:promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit).
 
 monitor_task(TaskHandler, Items) ->
     monitor_task(TaskHandler, Items, 0).

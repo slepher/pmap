@@ -13,12 +13,13 @@
 
 -export(['>>='/2, return/1, fail/1]).
 -export([promise/1, promise/2]).
--export([hook/1, update_callback/2]).
+-export([handle_message/2, update_callback/2]).
 -export([get_state/0, put_state/1, update_state/1]).
 -export([exec/4]).
 -export([message/2]).
 -export([then/4, handle_info/3]).
 -export([wait/1, wait/3]).
+-export([callback_with_timeout/3]).
 -export([execute_callback/3]).
 
 %%%===================================================================
@@ -99,17 +100,21 @@ promise(Reply, _Timeout) ->
             execute_callback(Callback, Reply, State)
     end.
 
-hook(Hook) ->
-    fun(Callback, StoreCallback, State) ->
-            NCallback = Hook(Callback),
-            execute_callback(NCallback, StoreCallback, State)
+handle_message(M, MessageHandler) ->
+    fun(Callback, StoreCallbacks, State) ->
+            NCallback = 
+                fun({message, Message}, S) ->
+                        execute_callback(MessageHandler, Message, S);
+                   (Reply, S) ->
+                        execute_callback(Callback, Reply, S)
+                end,
+            exec(M, NCallback, StoreCallbacks, State)
     end.
-    
 
 update_callback(M, Updater) ->
     fun(Callback, StoreCallbacks, State) ->
             NCallback = Updater(Callback),
-            M(NCallback, StoreCallbacks, State)
+            exec(M, NCallback, StoreCallbacks, State)
     end.
 
 exec(M, Callback, StoreCallback, State) ->
@@ -143,7 +148,6 @@ wait(Monad, Callback, State) ->
     StoreCallbacks = wait_store_callbacks(),
     NState = exec(Monad, Callback, StoreCallbacks, State),
     wait_receive(NState).
-
 
 wait_receive({wait, MRef, Callback, State}) ->
     receive 

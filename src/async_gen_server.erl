@@ -9,7 +9,7 @@
 -module(async_gen_server).
 
 %% API
--export([call/2, message/2]).
+-export([call/2]).
 -export([promise_call/2, promise_call/3]).
 %%%===================================================================
 %%% API
@@ -21,16 +21,17 @@
 %% @end
 %%--------------------------------------------------------------------
 call(Process, Request) ->
-    atask:call(Process, '$gen_call', Request).
+    async:call(Process, '$gen_call', Request).
 
-promise_call(Process, Request) ->
-    promise_call(Process, Request, infinity).
+promise_call(Name, Request) ->
+    promise_call(Name, Request, infinity).
 
-promise_call(Process, Request, Timeout) ->
-    async_m:promise(call(Process, Request), Timeout).
-
-message({PId, MRef}, Message) ->
-    async_m:message({PId, MRef}, Message).
+promise_call(Name, Request, Timeout) ->
+    fun(Callback, StoreCallback, State) ->
+            MRef = call(Name, Request),
+            NCallback = async_m:callback_with_timeout(MRef, Callback, Timeout),
+            StoreCallback(MRef, NCallback, State)
+    end.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
