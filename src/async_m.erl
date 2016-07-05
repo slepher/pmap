@@ -18,7 +18,8 @@
 -export([exec/4]).
 -export([message/2]).
 -export([then/4, handle_info/3]).
--export([wait/1, wait/3]).
+-export([wait/1, wait/2, wait/4]).
+-export([wait_receive/1]).
 -export([callback_with_timeout/3]).
 -export([execute_callback/3]).
 
@@ -137,19 +138,22 @@ handle_info(Info, Offset, State) ->
     end.
 
 wait(M) ->
+    wait(M, infinity).
+
+wait(M, Timeout) ->
     wait(M,
          fun({message, _Message}, S) ->
                  S;
             (Reply, _S) ->
                  Reply
-         end, ok).
+         end, ok, Timeout).
             
-wait(Monad, Callback, State) ->
-    StoreCallbacks = wait_store_callbacks(),
+wait(Monad, Callback, State, Timeout) ->
+    StoreCallbacks = wait_store_callbacks(Timeout),
     NState = exec(Monad, Callback, StoreCallbacks, State),
     wait_receive(NState).
 
-wait_receive({wait, MRef, Callback, State}) ->
+wait_receive({wait, MRef, Callback, State, Timeout}) ->
     receive 
         Msg ->
             case info_to_reply(Msg) of
@@ -157,14 +161,16 @@ wait_receive({wait, MRef, Callback, State}) ->
                     case Reply of
                         {message, _Message} ->
                             NState = execute_callback(Callback, Reply, State),
-                            wait_receive({wait, MRef, Callback, NState});
+                            wait_receive({wait, MRef, Callback, NState, Timeout});
                         Reply ->
                             NState = execute_callback(Callback, Reply, State),
                             wait_receive(NState)
                     end;
                 _ ->
-                    wait_receive({wait, MRef, Callback, State})
+                    wait_receive({wait, MRef, Callback, State, Timeout})
             end
+    after Timeout ->
+           {wait, MRef, Callback, State, Timeout} 
     end;
 wait_receive(State) ->
     State.
@@ -240,9 +246,9 @@ state_store_callback(Offset) ->
             setelement(Offset, State, NCallbacks)
     end.
 
-wait_store_callbacks() ->
+wait_store_callbacks(Timeout) ->
     fun(MRef, Callback, State) ->
-            {wait, MRef, Callback, State}
+            {wait, MRef, Callback, State, Timeout}
     end.
 
 store(Key, Value, Dict) when is_map(Dict) ->

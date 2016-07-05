@@ -9,7 +9,7 @@
 -module(async).
 
 %% API
--export([call/3, message/2]).
+-export([call/3, message/2, promise_action/2]).
 
 %%%===================================================================
 %%% API
@@ -44,6 +44,13 @@ call(Name, _Label, _Request) ->
 
 message({PId, MRef}, Message) ->
     catch PId ! {message, MRef, Message}.
+
+promise_action(Action, Timeout) ->
+    fun(Callback, StoreCallback, State) ->
+            MRef = Action(),
+            NCallback = async_m:callback_with_timeout(MRef, Callback, Timeout),
+            StoreCallback(MRef, NCallback, State)
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc

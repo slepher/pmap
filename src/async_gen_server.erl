@@ -27,11 +27,10 @@ promise_call(Name, Request) ->
     promise_call(Name, Request, infinity).
 
 promise_call(Name, Request, Timeout) ->
-    fun(Callback, StoreCallback, State) ->
-            MRef = call(Name, Request),
-            NCallback = async_m:callback_with_timeout(MRef, Callback, Timeout),
-            StoreCallback(MRef, NCallback, State)
-    end.
+    async:promise_action(
+      fun() ->
+              call(Name, Request)
+      end, Timeout).
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

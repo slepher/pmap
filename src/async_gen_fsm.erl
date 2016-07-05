@@ -9,7 +9,7 @@
 -module(async_gen_fsm).
 
 %% API
--export([sync_send_event/2, sync_send_all_state_event/2, message/2]).
+-export([sync_send_event/2, sync_send_all_state_event/2]).
 -export([promise_sync_send_event/2, promise_sync_send_event/3]).
 -export([promise_sync_send_all_state_event/2, promise_sync_send_all_state_event/3]).
 %%%===================================================================
@@ -22,25 +22,28 @@
 %% @end
 %%--------------------------------------------------------------------
 sync_send_event(Process, Request) ->
-    atask:call(Process, '$gen_sync_event', Request).
+    async:call(Process, '$gen_sync_event', Request).
 
 sync_send_all_state_event(Process, Request) ->
-    atask:call(Process, '$gen_sync_all_state_event', Request).
+    async:call(Process, '$gen_sync_all_state_event', Request).
 
 promise_sync_send_event(Process, Request) ->
     promise_sync_send_event(Process, Request, infinity).
 
 promise_sync_send_event(Process, Request, Timeout) ->
-    async_m:promise(sync_send_event(Process, Request), Timeout).
+    async:promise_action(
+      fun() ->
+              sync_send_event(Process, Request)
+      end, Timeout).
 
 promise_sync_send_all_state_event(Process, Request) ->
     promise_sync_send_all_state_event(Process, Request, infinity).
 
 promise_sync_send_all_state_event(Process, Request, Timeout) ->
-    async_m:promise(sync_send_all_state_event(Process, Request), Timeout).
-
-message({PId, MRef}, Message) ->
-    async_m:message({PId, MRef}, Message).
+    async:promise_action(
+      fun() ->
+              sync_send_all_state_event(Process, Request)
+      end, Timeout).
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
