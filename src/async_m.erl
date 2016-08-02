@@ -222,15 +222,24 @@ callback_with_timeout(_Async, Callback, _Timeout) ->
     Callback.
 
 execute_callback(Callback, Value, State) when is_function(Callback) ->
+    NValue = 
+        case Value of
+            {ok, V} ->
+                {ok, V};
+            {error, R} ->
+                {error, R};
+            Other ->
+                {ok, Other}
+        end,
     case erlang:fun_info(Callback, arity) of
         {arity, 0} ->
             Callback(),
             State;
         {arity, 1} ->
-            Callback(Value),
+            Callback(NValue),
             State;
         {arity, 2} ->
-            Callback(Value, State);
+            Callback(NValue, State);
         {arity, N} ->
             exit({invalid_callback, Callback, N})
     end;
