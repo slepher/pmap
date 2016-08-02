@@ -61,16 +61,24 @@ async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     pmap_worker:async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit).
 
 promise_task(TaskHandler, Items) ->
-    promise_task(TaskHandler, Items, 0).
+    promise_task(TaskHandler, Items, #{}).
+
+promise_task(TaskHandler, Items, Options) when is_map(Options) ->
+    ReplyHandler = maps:get(reply_handler, Options, fun simple_callback/3),
+    Acc0 = maps:get(acc0, Options, []),
+    Limit = maps:get(threads, Options, 0),
+    Timeout = maps:get(timeout, Options, infinity),
+    pmap_worker:promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit, Timeout);
 
 promise_task(TaskHandler, Items, Limit) ->
-    promise_task(TaskHandler, fun simple_callback/3, [], Items, Limit).
+    promise_task(TaskHandler, Items, #{threads => Limit}).
 
 promise_task(TaskHandler, ReplyHandler, Acc0, Items) ->
-    promise_task(TaskHandler, ReplyHandler, Acc0, Items, 0).
+    promise_task(TaskHandler, Items, #{reply_handler => ReplyHandler, acc0 => Acc0}).
 
 promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
-    pmap_worker:promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit).
+    promise_task(TaskHandler, Items, #{reply_handler => ReplyHandler, acc0 => Acc0,
+                                       threads => Limit}).
 
 monitor_task(TaskHandler, Items) ->
     monitor_task(TaskHandler, Items, 0).

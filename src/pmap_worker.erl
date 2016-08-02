@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([task/5, async_task/5, promise_task/5, progress/1]).
+-export([task/5, async_task/5, promise_task/6, progress/1]).
 -export([apply_task_handler/3, apply_reply_handler/5]).
 -export([start/0]).
 -export([start_link/0]).
@@ -39,13 +39,13 @@ async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
     atask:start_and_action(fun start/0, fun atask_gen_server:call/2,
                            [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit}]).
 
-promise_task(_TaskHandler, _ReplyHandler, Acc0, [], _Limit) ->
+promise_task(_TaskHandler, _ReplyHandler, Acc0, [], _Limit, _Timeout) ->
     async_m:return(Acc0);
-promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
+promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit, Timeout) ->
     case start() of
         {ok, PId} ->
             async_gen_server:promise_call(
-              PId, {task, TaskHandler, ReplyHandler, Acc0, Items, Limit});
+              PId, {task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, Timeout);
         {error, Reason} ->
             async_m:fail(Reason)
     end.

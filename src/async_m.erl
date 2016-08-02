@@ -11,9 +11,9 @@
 
 -behaviour(monad).
 
--export(['>>='/2, return/1, fail/1]).
+-export(['>>='/2, return/1, fail/1, wrap/1]).
 -export([promise/1, promise/2]).
--export([handle_message/2, update_callback/2]).
+-export([handle_message/2, return_error_m/1, update_callback/2]).
 -export([get_state/0, put_state/1, update_state/1]).
 -export([exec/4]).
 -export([message/2]).
@@ -64,6 +64,20 @@ return(A) ->
 fail(X) -> 
     fun(Callback, _StoreCallback, State) ->
             execute_callback(Callback, {error, X}, State)
+    end.
+
+wrap(E) ->
+    Data = 
+        case E of
+            {ok, V} ->
+                {ok, V};
+            {error, R} ->
+                {error, R};
+            Other ->
+                {ok, Other}
+        end,
+    fun(Callback, _StoreCallback, State) ->
+            execute_callback(Callback, Data, State)
     end.
 
 get_state() ->
@@ -118,6 +132,17 @@ update_callback(M, Updater) ->
             exec(M, NCallback, StoreCallbacks, State)
     end.
 
+return_error_m(M) ->
+    fun(Callback, StoreCallback, State) ->
+            NCallback = 
+                fun({message, Message}, S) ->
+                        execute_callback(Callback, {message, Message}, S);
+                   (Reply, S) ->
+                        execute_callback(Callback, {ok, Reply}, S)
+                end,
+            exec(M, NCallback, StoreCallback, State)
+    end.
+
 exec(M, Callback, StoreCallback, State) ->
     M(Callback, StoreCallback, State).
 
@@ -153,7 +178,7 @@ wait(Monad, Callback, State, Timeout) ->
     NState = exec(Monad, Callback, StoreCallbacks, State),
     wait_receive(NState).
 
-wait_receive({wait, MRef, Callback, State, Timeout}) ->
+wait_receive({wait, MRef, Callback, State, Timeout}) when is_reference(MRef) ->
     receive 
         Msg ->
             case info_to_reply(Msg) of
@@ -172,6 +197,9 @@ wait_receive({wait, MRef, Callback, State, Timeout}) ->
     after Timeout ->
            {wait, MRef, Callback, State, Timeout} 
     end;
+wait_receive({wait, Reply, Callback, State, _Timeout}) ->
+    NState = execute_callback(Callback, Reply, State),
+    wait_receive(NState);
 wait_receive(State) ->
     State.
 
