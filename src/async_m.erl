@@ -11,7 +11,7 @@
 
 -behaviour(monad).
 
--export(['>>='/2, return/1, fail/1, wrap/1]).
+-export(['>>='/2, return/1, fail/1]).
 -export([promise/1, promise/2]).
 -export([handle_message/2, return_error_m/1, update_callback/2]).
 -export([get_state/0, put_state/1, update_state/1]).
@@ -58,26 +58,12 @@
 
 return(A) -> 
     fun(Callback, _StoreCallback, State) -> 
-            execute_callback(Callback, {ok, A}, State)
+            execute_callback(Callback, A, State)
     end.
                        
 fail(X) -> 
     fun(Callback, _StoreCallback, State) ->
             execute_callback(Callback, {error, X}, State)
-    end.
-
-wrap(E) ->
-    Data = 
-        case E of
-            {ok, V} ->
-                {ok, V};
-            {error, R} ->
-                {error, R};
-            Other ->
-                {ok, Other}
-        end,
-    fun(Callback, _StoreCallback, State) ->
-            execute_callback(Callback, Data, State)
     end.
 
 get_state() ->
@@ -222,15 +208,7 @@ callback_with_timeout(_Async, Callback, _Timeout) ->
     Callback.
 
 execute_callback(Callback, Value, State) when is_function(Callback) ->
-    NValue = 
-        case Value of
-            {ok, V} ->
-                {ok, V};
-            {error, R} ->
-                {error, R};
-            Other ->
-                {ok, Other}
-        end,
+    NValue = wrap_value(Value),
     case erlang:fun_info(Callback, arity) of
         {arity, 0} ->
             Callback(),
@@ -308,3 +286,13 @@ remove(Key, Dict) when is_list(Dict) ->
     orddict:erase(Key, Dict);
 remove(Key, Dict) ->
     dict:erase(Key, Dict).
+
+wrap_value(Value) ->
+    case Value of
+        {ok, V} ->
+            {ok, V};
+        {error, R} ->
+                {error, R};
+        Other ->
+            {ok, Other}
+    end.
