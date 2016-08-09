@@ -13,15 +13,15 @@
 
 -export(['>>='/2, return/1, fail/1]).
 -export([promise/1, promise/2]).
--export([handle_message/2, return_error_m/1, update_callback/2]).
+-export([handle_message/2, handle_message2/2, return_error_m/1, update_callback/2]).
 -export([get_state/0, put_state/1, update_state/1]).
 -export([exec/4]).
 -export([message/2]).
--export([then/4, handle_info/3]).
+-export([then/2, then/4, handle_info/3]).
 -export([wait/1, wait/2, wait/4]).
 -export([wait_receive/1]).
 -export([callback_with_timeout/3]).
--export([execute_callback/3]).
+-export([execute_hook/3]).
 
 %%%===================================================================
 %%% API
@@ -105,12 +105,20 @@ handle_message(M, MessageHandler) ->
     fun(Callback, StoreCallbacks, State) ->
             NCallback = 
                 fun({message, Message}, S) ->
-                        execute_callback(MessageHandler, Message, S);
+                        execute_hook(MessageHandler, Message, S);
                    (Reply, S) ->
                         execute_callback(Callback, Reply, S)
                 end,
             exec(M, NCallback, StoreCallbacks, State)
     end.
+
+handle_message2(M, MessageHandler) ->
+    then(M,
+         fun(_Callback, {message, Message}, S) ->
+                 execute_hook(MessageHandler, Message, S);
+            (Callback, Reply, S) ->
+                 execute_callback(Callback, Reply, S)
+         end).
 
 update_callback(M, Updater) ->
     fun(Callback, StoreCallbacks, State) ->
@@ -131,6 +139,27 @@ return_error_m(M) ->
 
 exec(M, Callback, StoreCallback, State) ->
     M(Callback, StoreCallback, State).
+
+then(M, MCallback) ->
+    fun(Callback, StoreCallback, State) ->
+            NCallback = 
+                fun(Reply, S) ->
+                        case erlang:fun_info(MCallback, arity) of
+                            {arity, 0} ->
+                                MCallback(),
+                                execute_callback(Callback, Reply, S);
+                            {arity, 1} ->
+                                MCallback(Reply),
+                                execute_callback(Callback, Reply, S);
+                            {arity, 2} ->
+                                NS = MCallback(Reply, S),
+                                execute_callback(Callback, Reply, NS);
+                            {arity, 3} ->
+                                MCallback(Callback, Reply, S)
+                        end
+                end,
+            exec(M, NCallback, StoreCallback, State)
+    end.
 
 then(Monad, Callback, Offset, State) ->
     StoreCallback = state_store_callback(Offset),
@@ -177,7 +206,7 @@ wait_receive({wait, MRef, Callback, State, Timeout}) when is_reference(MRef) ->
                             NState = execute_callback(Callback, Reply, State),
                             wait_receive(NState)
                     end;
-                _ ->
+                _Other ->
                     wait_receive({wait, MRef, Callback, State, Timeout})
             end
     after Timeout ->
@@ -207,21 +236,24 @@ callback_with_timeout(_Async, Callback, infinity) when is_function(Callback) ->
 callback_with_timeout(_Async, Callback, _Timeout) ->
     Callback.
 
-execute_callback(Callback, Value, State) when is_function(Callback) ->
+execute_callback(Callback, Value, State) ->
     NValue = wrap_value(Value),
+    execute_hook(Callback, NValue, State).
+
+execute_hook(Callback, Value, State) when is_function(Callback) ->
     case erlang:fun_info(Callback, arity) of
         {arity, 0} ->
             Callback(),
             State;
         {arity, 1} ->
-            Callback(NValue),
+            Callback(Value),
             State;
         {arity, 2} ->
-            Callback(NValue, State);
+            Callback(Value, State);
         {arity, N} ->
             exit({invalid_callback, Callback, N})
     end;
-execute_callback(Callback, _Value, _State) ->
+execute_hook(Callback, _Value, _State) ->
     exit({invalid_callback, Callback}).
 
 info_to_reply({message, MRef, Message}) when is_reference(MRef) ->
@@ -292,7 +324,11 @@ wrap_value(Value) ->
         {ok, V} ->
             {ok, V};
         {error, R} ->
-                {error, R};
+            {error, R};
+        {message, M} ->
+            {message, M};
+        ok ->
+            ok;
         Other ->
             {ok, Other}
     end.
