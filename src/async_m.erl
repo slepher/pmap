@@ -11,9 +11,9 @@
 
 -behaviour(monad).
 
--export(['>>='/2, return/1, fail/1]).
+-export(['>>='/2, return/1, fail/1, pure_return/1, return_error_m/1]).
 -export([promise/1, promise/2]).
--export([handle_message/2, handle_message2/2, return_error_m/1, update_callback/2]).
+-export([handle_message/2, update_callback/2]).
 -export([get_state/0, put_state/1, update_state/1]).
 -export([exec/4]).
 -export([message/2]).
@@ -21,7 +21,7 @@
 -export([wait/1, wait/2, wait/4]).
 -export([wait_receive/1]).
 -export([callback_with_timeout/3]).
--export([execute_hook/3]).
+-export([execute_callback/3]).
 
 %%%===================================================================
 %%% API
@@ -40,15 +40,7 @@
                  ({message, Message}, NState) ->
                       execute_callback(Callback, {message, Message}, NState);
                  (Reply, NState) ->
-                      Val = 
-                          case Reply of
-                              {ok, R} ->
-                                  R;
-                              ok ->
-                                  ok;
-                              Other -> 
-                                  Other
-                          end,
+                      Val = wrap_value(Reply),
                       (Fun(Val))(
                         fun(NReply, NNState) ->
                                 execute_callback(Callback, NReply, NNState)
@@ -56,7 +48,10 @@
               end, StoreCallbacks, State)
     end.
 
-return(A) -> 
+return(A) ->
+    pure_return(wrap_value(A)).
+
+pure_return(A) -> 
     fun(Callback, _StoreCallback, State) -> 
             execute_callback(Callback, A, State)
     end.
@@ -102,20 +97,9 @@ promise(Reply, _Timeout) ->
     end.
 
 handle_message(M, MessageHandler) ->
-    fun(Callback, StoreCallbacks, State) ->
-            NCallback = 
-                fun({message, Message}, S) ->
-                        execute_hook(MessageHandler, Message, S);
-                   (Reply, S) ->
-                        execute_callback(Callback, Reply, S)
-                end,
-            exec(M, NCallback, StoreCallbacks, State)
-    end.
-
-handle_message2(M, MessageHandler) ->
     then(M,
          fun(_Callback, {message, Message}, S) ->
-                 execute_hook(MessageHandler, Message, S);
+                 execute_callback(MessageHandler, Message, S);
             (Callback, Reply, S) ->
                  execute_callback(Callback, Reply, S)
          end).
@@ -236,11 +220,7 @@ callback_with_timeout(_Async, Callback, infinity) when is_function(Callback) ->
 callback_with_timeout(_Async, Callback, _Timeout) ->
     Callback.
 
-execute_callback(Callback, Value, State) ->
-    NValue = wrap_value(Value),
-    execute_hook(Callback, NValue, State).
-
-execute_hook(Callback, Value, State) when is_function(Callback) ->
+execute_callback(Callback, Value, State) when is_function(Callback) ->
     case erlang:fun_info(Callback, arity) of
         {arity, 0} ->
             Callback(),
@@ -253,7 +233,7 @@ execute_hook(Callback, Value, State) when is_function(Callback) ->
         {arity, N} ->
             exit({invalid_callback, Callback, N})
     end;
-execute_hook(Callback, _Value, _State) ->
+execute_callback(Callback, _Value, _State) ->
     exit({invalid_callback, Callback}).
 
 info_to_reply({message, MRef, Message}) when is_reference(MRef) ->

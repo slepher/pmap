@@ -36,8 +36,7 @@ map(F, Items, Limit) ->
     Handler = fun(N) -> Item = lists:nth(N, Items), pmap:atask(fun() -> F(Item) end) end,
     [V|| {_N, V} <- lists:keysort(1, task(Handler, lists:seq(1, Length), Limit))].
 
-task(TaskHandler, Items) ->
-    task(TaskHandler, Items, 0).
+task(TaskHandler, Items) ->    task(TaskHandler, Items, 0).
 
 task(TaskHandler, Items, Limit) ->
     task(TaskHandler, fun simple_callback/3, [], Items, Limit).

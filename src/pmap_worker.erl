@@ -40,7 +40,7 @@ async_task(TaskHandler, ReplyHandler, Acc0, Items, Limit) ->
                            [{task, TaskHandler, ReplyHandler, Acc0, Items, Limit}]).
 
 promise_task(_TaskHandler, _ReplyHandler, Acc0, [], _Limit, _Timeout) ->
-    async_m:return(Acc0);
+    async_m:pure_return(Acc0);
 promise_task(TaskHandler, ReplyHandler, Acc0, Items, Limit, Timeout) ->
     case start() of
         {ok, PId} ->
@@ -75,9 +75,6 @@ apply_reply_handler(ReplyHandler, Item, Reply, From, Acc) ->
         {arity, N} ->
             exit({invalid_reply_handler, ReplyHandler, N})
     end.
-
-
-    
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -131,7 +128,8 @@ handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, From, State) 
         lists:foldl(
           fun(Item, S) ->
                   add_task(Item, TaskHandler, ReplyHandler, From, S)
-          end, State#state{acc = Acc0, working = WorkingItems, pending = PendingItems}, WorkingItems),
+          end, State#state{acc = Acc0, working = WorkingItems,
+                           pending = PendingItems}, WorkingItems),
     {noreply, NState};
 
 handle_call(progress, _From, #state{completed = Completed, working = Working} = State) ->
@@ -151,7 +149,10 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(_Msg, State) ->
+handle_cast(stop, State) ->
+    {stop, normal, State};
+handle_cast(Msg, State) ->
+    error_logger:error_msg("unexpected cast msg ~p", [Msg]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -164,17 +165,14 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({message, MRef, Response}, State) when is_reference(MRef) ->
-    atask_gen_server:handle_reply({message, MRef, Response}, #state.callbacks, State);
-handle_info({MRef, Response}, State) when is_reference(MRef) ->
-    atask_gen_server:handle_reply({MRef, Response}, #state.callbacks, State);
-handle_info({'DOWN', MRef, Type, Object, Reason}, State) when is_reference(MRef) ->
-    atask_gen_server:handle_reply({'DOWN', MRef, Type, Object, Reason}, #state.callbacks, State);
-
 handle_info(Info, State) ->
-    error_logger:info_msg("[~p] unexpected info msg ~p", [?MODULE, Info]),
-    {noreply, State}.
-
+    case async_m:handle_info(Info, #state.callbacks, State) of
+        unhandled ->
+            error_logger:error_msg("unexpected info msg ~p", [Info]),
+            {noreply, State};
+        NState when is_record(NState, state) ->
+            {noreply, NState}
+    end.
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -244,7 +242,8 @@ add_task(Item, TaskHandler, ReplyHandler, From, State) ->
                                 case NWIs of
                                     [] ->
                                         gen_server:reply(From, NAcc),
-                                        {stop, normal, NNS};
+                                        gen_server:cast(self(), stop),
+                                        NNS;
                                     _ ->
                                         NNS
                                 end; 
@@ -255,12 +254,15 @@ add_task(Item, TaskHandler, ReplyHandler, From, State) ->
                         end
                 end
         end,
-    case apply_task_handler(TaskHandler, Item, From) of
-        % for old functions
-        {ok, MRef} when is_reference(MRef) ->
-            atask_gen_server:wait_reply(Callback, MRef, #state.callbacks, State);
-        MRef when is_reference(MRef) ->
-            atask_gen_server:wait_reply(Callback, MRef, #state.callbacks, State);
-        Other ->
-            Callback(Other, State)
-    end.
+    Monad = 
+        case apply_task_handler(TaskHandler, Item, From) of
+            {ok, MRef} when is_reference(MRef) ->
+                async_m:promise(MRef);
+            MRef when is_reference(MRef) ->
+                async_m:promise(MRef);
+            M when is_function(M) ->
+                M;
+            Other ->
+                async_m:pure_return(Other)
+        end,
+    async_m:then(Monad, Callback, #state.callbacks, State).
