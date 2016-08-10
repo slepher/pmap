@@ -40,7 +40,7 @@
                  ({message, Message}, NState) ->
                       execute_callback(Callback, {message, Message}, NState);
                  (Reply, NState) ->
-                      Val = wrap_value(Reply),
+                      Val = unwrap_value(Reply),
                       (Fun(Val))(
                         fun(NReply, NNState) ->
                                 execute_callback(Callback, NReply, NNState)
@@ -311,4 +311,14 @@ wrap_value(Value) ->
             ok;
         Other ->
             {ok, Other}
+    end.
+
+unwrap_value(Value) ->
+    case Value of
+        {ok, R} ->
+            R;
+        ok ->
+            ok;
+        Other ->
+            Other
     end.
