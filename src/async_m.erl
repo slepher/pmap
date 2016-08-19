@@ -32,7 +32,7 @@
 %% @spec
 %% @end
 %%--------------------------------------------------------------------
-'>>='(M, Fun) ->
+'>>='(M, Fun) when is_function(M, 3) ->
     fun(Callback, StoreCallbacks, State) ->
             M(
               fun({error, Reason}, NState) ->
@@ -46,7 +46,10 @@
                                 execute_callback(Callback, NReply, NNState)
                         end, StoreCallbacks, NState)
               end, StoreCallbacks, State)
-    end.
+    end;
+'>>='(Value, _Fun) ->
+    exit({invalid_monad, Value}).
+
 
 return(A) ->
     pure_return(wrap_value(A)).
