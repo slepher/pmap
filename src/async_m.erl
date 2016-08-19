@@ -164,6 +164,18 @@ handle_info(Info, Offset, State) ->
             execute_callback(Callback, Reply, NState)
     end.
 
+old_handle_info(Info, Offset, State) ->
+    Callbacks = element(Offset, State),
+    case handle_reply(Info, Callbacks) of
+        error ->
+            State;
+        unhandled ->
+            unhandled;
+        {Reply, Callback, NCallbacks}  ->
+            NState = setelement(Offset, State, NCallbacks),
+            atask_gen_server:execute_callback(Callback, Reply, Offset, NState)
+    end. 
+
 wait(M) ->
     wait(M, infinity).
 

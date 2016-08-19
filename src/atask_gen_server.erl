@@ -17,6 +17,7 @@
          handle_reply/3, pure_handle_reply/3]).
 -export([update_state/3, update_bind/2]).
 -export([state/1]).
+-export([execute_callback/4]).
 
 %%%===================================================================
 %%% API
