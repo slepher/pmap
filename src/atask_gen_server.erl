@@ -17,7 +17,7 @@
          handle_reply/3, pure_handle_reply/3]).
 -export([update_state/3, update_bind/2]).
 -export([state/1]).
--export([execute_callback/4]).
+-export([handle_info/3]).
 
 %%%===================================================================
 %%% API
@@ -178,6 +178,18 @@ state(Process) when is_atom(Process) ->
 state(PId) when is_pid(PId) ->
     Status = sys:get_status(PId),
     element(2, lists:nth(1, element(2, lists:nth(3, lists:nth(5, element(4, Status)))))).
+
+handle_info(Info, Offset, State) ->
+    Callbacks = element(Offset, State),
+    case async_m:handle_reply(Info, Callbacks) of
+        error ->
+            State;
+        unhandled ->
+            unhandled;
+        {Reply, Callback, NCallbacks}  ->
+            NState = setelement(Offset, State, NCallbacks),
+            execute_callback(Callback, Reply, Offset, NState)
+    end. 
 
 %%--------------------------------------------------------------------
 %% @doc

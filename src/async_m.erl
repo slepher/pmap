@@ -18,6 +18,7 @@
 -export([exec/4]).
 -export([message/2]).
 -export([then/2, then/4, handle_info/3]).
+-export([handle_reply/2]).
 -export([wait/1, wait/2, wait/4]).
 -export([wait_receive/1]).
 -export([callback_with_timeout/3]).
@@ -163,18 +164,6 @@ handle_info(Info, Offset, State) ->
             NState = setelement(Offset, State, NCallbacks),
             execute_callback(Callback, Reply, NState)
     end.
-
-old_handle_info(Info, Offset, State) ->
-    Callbacks = element(Offset, State),
-    case handle_reply(Info, Callbacks) of
-        error ->
-            State;
-        unhandled ->
-            unhandled;
-        {Reply, Callback, NCallbacks}  ->
-            NState = setelement(Offset, State, NCallbacks),
-            atask_gen_server:execute_callback(Callback, Reply, Offset, NState)
-    end. 
 
 wait(M) ->
     wait(M, infinity).
