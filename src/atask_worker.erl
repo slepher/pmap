@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([atask/1]).
+-export([atask/1, promise/1]).
 -export([start/0]).
 -export([start_link/0]).
 
@@ -28,6 +28,14 @@
 %%%===================================================================
 atask(Action) ->
     atask:start_and_action(fun start/0, fun atask_gen_server:call/2, [{action, Action}]).
+
+promise(Action) ->
+    case start() of
+        {ok, Pid} ->
+            async_gen_server:promise_call(Pid, {action, Action});
+        {error, Reason} ->
+            async_m:fail(Reason)
+    end.
 
 start() ->
     supervisor:start_child(atask_worker_sup, []).

@@ -10,7 +10,7 @@
 
 %% API
 -export([start/0]).
--export([atask/1]).
+-export([atask/1, promise_atask/1]).
 -export([map/2, map/3]).
 -export([task/2, task/3, task/4, task/5]).
 -export([async_task/2, async_task/3, async_task/4, async_task/5]).
@@ -27,6 +27,9 @@ start() ->
 
 atask(F) ->
     atask_worker:atask(F).
+
+promise_atask(F) ->
+    atask_worker:promise(F).
 
 map(F, Items) ->
     map(F, Items, 0).
