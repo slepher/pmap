@@ -14,7 +14,7 @@
 -export([task/5, async_task/5, promise_task/6, progress/1]).
 -export([apply_task_handler/3, apply_reply_handler/5]).
 -export([start/0]).
--export([start_link/0]).
+-export([start_link/0, start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -84,6 +84,9 @@ apply_reply_handler(ReplyHandler, Item, Reply, From, Acc) ->
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
+
+start_link(Name) ->
+    gen_server:start_link({local, Name}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks

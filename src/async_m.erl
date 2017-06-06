@@ -59,6 +59,7 @@ pure_return(A) ->
     fun(Callback, _StoreCallback, State) -> 
             execute_callback(Callback, A, State)
     end.
+
                        
 fail(X) -> 
     fun(Callback, _StoreCallback, State) ->
@@ -326,3 +327,4 @@ unwrap_value(Value) ->
         Other ->
             Other
     end.
+    

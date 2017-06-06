@@ -1,7 +1,7 @@
-ebin/*.beam
-ebin/*.app
+ebin
 test/*.beam
 logs
 deps
 .rebar
 .edts
+.eunit

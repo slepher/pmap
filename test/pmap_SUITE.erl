@@ -12,7 +12,9 @@
 
 %% Note: This directive should only be used in test suites.
 -compile(export_all).
+-compile({parse_transform, do}).
 
+-include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 %% Test server callback functions
@@ -92,7 +94,7 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_map, test_pmap_task, test_pmap_monitor].
+    [test_map, test_pmap_task, test_pmap_monitor, test_pmap_promise].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
@@ -134,4 +136,20 @@ test_pmap_monitor(Config) when is_list(Config) ->
     timer:sleep(3000),
     {ok, FV} = pmap:status(V),
     FV = lists:reverse(lists:map(fun(N) -> {N, ok} end, lists:seq(1, 10))).
+
+test_pmap_promise() ->
+    [{doc, "Test pmap promise"}].
+
+test_pmap_promise(Config) ->
+    {ok, PId} = echo_server:start(),
+    R = 
+    pmap:task(
+      fun(N) ->
+              do([async_m || 
+                     {hello, Reply} <- async_gen_server:promise_call(PId, {hello, N}),
+                     async_gen_server:promise_call(PId, {hello, hello, Reply})
+                 ])
+      end, lists:seq(1, 10), 5),
+    ?assertEqual(lists:reverse(lists:map(fun(N) -> {N, {hello, hello, N}} end, lists:seq(1, 10))), R).
+                     
 
