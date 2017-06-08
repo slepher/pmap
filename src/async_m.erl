@@ -233,7 +233,7 @@ execute_callback(Callback, Value, State) when is_function(Callback) ->
         {arity, 1} ->
             Callback(Value),
             State;
-        {arity, 2} ->Val
+        {arity, 2} ->
             Callback(Value, State);
         {arity, N} ->
             exit({invalid_callback, Callback, N})
