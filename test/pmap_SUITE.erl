@@ -146,8 +146,8 @@ test_pmap_promise(_Config) ->
     pmap:task(
       fun(N) ->
               do([async_m || 
-                     {hello, Reply} <- async_gen_server:promise_call(PId, {hello, N}),
-                     async_gen_server:promise_call(PId, {hello, hello, Reply})
+                     {hello, Reply} <- async_gen_server:promise_call(PId, {echo, {hello, N}}),
+                     async_gen_server:promise_call(PId, {echo, {hello, hello, Reply}})
                  ])
       end, lists:seq(1, 10), 5),
     ?assertEqual(lists:reverse(lists:map(fun(N) -> {N, {hello, hello, N}} end, lists:seq(1, 10))), R).

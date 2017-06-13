@@ -107,7 +107,7 @@ test_async_t() ->
 test_async_t(Config) when is_list(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     M = async_t:new(identity_m),
-    MRef = async_gen_server:call(EchoServer, {ok, hello}),
+    MRef = echo_server:echo(EchoServer, {ok, hello}),
     Monad = M:promise(MRef),
     State = M:run(Monad, 
                     fun(Reply) ->
@@ -130,10 +130,10 @@ test_chain_async() ->
 test_chain_async(Config) when is_list(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     M = async_t:new(identity_m),
-    MRef = async_gen_server:call(EchoServer, {ok, hello}),
+    MRef = echo_server:echo(EchoServer, hello),
     Monad = do([M || 
                    R1 <- M:promise(MRef),
-                   R2 <- M:promise(async_gen_server:call(EchoServer, {ok, world})),
+                   R2 <- M:promise(echo_server:echo(EchoServer, {ok, world})),
                    M:return({R1, R2})
                ]),
     State = M:run(Monad, 
@@ -151,20 +151,49 @@ test_chain_async(Config) when is_list(Config) ->
     end.
 
 test_chain_async_fail() ->
-    [{doc, "Describe the main purpose of this test case"}].
+    [{doc, "test fail in async_t"}].
 test_chain_async_fail(Config) when is_list(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     M = async_t:new(identity_m),
-    MRef = async_gen_server:call(EchoServer, {ok, hello}),
+    MRef = echo_server:echo(EchoServer, {ok, hello}),
     Monad = do([M || 
                    R1 <- M:promise(MRef),
-                   R2 <- M:promise(async_gen_server:call(EchoServer, {error, world})),
-                   R3 <- M:promise(async_gen_server:call(EchoServer, {ok, world2})),
+                   R2 <- M:promise(echo_server:echo(EchoServer, {error, world})),
+                   R3 <- M:promise(echo_server:echo(EchoServer, hello)),
                    M:return({R1, R2, R3})
                ]),
     State = M:run(Monad, 
                     fun(Reply) ->
                             ?assertEqual(Reply, {error, world})
+                    end, #state.callbacks, #state{}),
+    receive 
+        Info ->
+            case M:handle_info(Info, #state.callbacks, State) of
+                unhandled ->
+                    State;
+                NState ->
+                    NState
+            end
+    end.
+
+test_async_t_with_message() ->
+    [{doc, "test async_t with message"}].
+
+test_async_t_with_message(Config) ->
+    EchoServer = proplists:get_value(echo_server, Config),
+    M = async_t:new(identity_m),
+    MRef = echo_server:echo_with_messages(EchoServer, [message, message], hello),
+    Monad = do([M || 
+                   R1 <- M:promise(MRef),
+                   R2 <- M:promise(echo_server:echo(EchoServer, {error, world})),
+                   R3 <- M:promise(echo_server:echo(EchoServer, hello)),
+                   M:return({R1, R2, R3})
+               ]),
+    State = M:run(Monad, 
+                    fun({error, R}) ->
+                            ?assertEqual(R, world);
+                        ({message, M})->
+                            ?assertEqual(M, message)
                     end, #state.callbacks, #state{}),
     receive 
         Info ->

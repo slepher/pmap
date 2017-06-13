@@ -11,6 +11,7 @@
 -behaviour(gen_server).
 
 %% API
+-export([echo_with_messages/3, delayed_echo/3, echo/2]).
 -export([start/0, start_link/0]).
 
 %% gen_server callbacks
@@ -21,6 +22,14 @@
 
 -record(state, {}).
 
+echo_with_messages(Echo, Messages, Request) ->
+    async_gen_server:call(Echo, {echo_with_messages, Messages, Request}).
+
+delayed_echo(Echo, Timeout, Request) ->
+    async_gen_server:call(Echo, {delayed_echo, Timeout, Request}).
+
+echo(Echo, Request) ->
+    async_gen_server:call(Echo, {echo, Request}).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -71,9 +80,21 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(Request, _From, State) ->
+handle_call({echo_with_messages, Messages, Request}, From, State) ->
+    liists:foreach(
+      fun(Message) ->
+              async:message(From, Message)
+      end, Messages),
+    {reply, Request, State};
+handle_call({delayed_echo, Timeout, Request}, From, State) ->
+    erlang:send_after(Timeout, self(), {Request, From}),
+    {noreply, State};
+handle_call({echo, Request}, _From, State) ->
     Reply = Request,
-    {reply, Reply, State}.
+    {reply, Reply, State};
+handle_call(Request, _From, State) ->
+    {reply, {error, {invalid_request, Request}}, State}.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -98,6 +119,9 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({Request, From}, State) ->
+    gen_server:reply(From, Request),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
