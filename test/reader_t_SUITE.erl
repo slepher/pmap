@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 25 Mar 2012 by Chen Slepher <slepher@larry.wd201201>
 %%%-------------------------------------------------------------------
--module(pmap_SUITE).
+-module(reader_t_SUITE).
 
 -suite_defaults([{timetrap, {minutes, 10}}]).
 
@@ -32,9 +32,7 @@
 %% @end
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
-    pmap:start(),
     Config.
-
 %%--------------------------------------------------------------------
 %% @doc
 %% Config - [tuple()]
@@ -94,60 +92,20 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_map, test_pmap_task, test_pmap_monitor, test_pmap_promise].
+    [test_reader_t].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
+test_reader_t() ->
+    [{doc, "Test reader_t"}].
 
-test_map() ->
-    [{doc, "Describe the main purpose of this test case"}].
-test_map(Config) when is_list(Config) ->
-    F = fun(A) ->  A * 2 end,
-    Items = lists:seq(1, 10),
-    V1 = lists:map(F, Items),
-    V2 = pmap:map(F, Items),
-    V1 = V2.
-                
-test_pmap_task() ->
-    [{doc, "Describe the main purpose of this test case"}].
-
-test_pmap_task(Config) when is_list(Config) ->
-    Start = erlang:timestamp(),
-    V = 
-    pmap:task(
-      fun(N) ->
-              pmap:atask(fun() -> timer:sleep(N * 100) end)
-      end, lists:seq(1, 10), 2),
-    End = erlang:timestamp(),
-    V = lists:reverse(lists:map(fun(N) -> {N, ok} end, lists:seq(1, 10))),
-    Used = round(timer:now_diff(End, Start) / 100000),
-    30 = Used.
-
-test_pmap_monitor() ->
-    [{doc, "Describe the main purpose of this test case"}].
-
-test_pmap_monitor(Config) when is_list(Config) ->
-    V = pmap:monitor_task(
-          fun(N) ->
-                  pmap:atask(fun() -> timer:sleep(N * 100) end)
-          end, lists:seq(1, 10), 2),
-    timer:sleep(150),
-    {progress, {1, [3, 2]}} = pmap:status(V),
-    timer:sleep(3000),
-    {ok, FV} = pmap:status(V),
-    FV = lists:reverse(lists:map(fun(N) -> {N, ok} end, lists:seq(1, 10))).
-
-test_pmap_promise() ->
-    [{doc, "Test pmap promise"}].
-
-test_pmap_promise(_Config) ->
-    {ok, PId} = echo_server:start(),
-    R = 
-    pmap:task(
-      fun(N) ->
-              do([async_m || 
-                     {hello, Reply} <- async_gen_server:promise_call(PId, {hello, N}),
-                     async_gen_server:promise_call(PId, {hello, hello, Reply})
-                 ])
-      end, lists:seq(1, 10), 5),
-    ?assertEqual(lists:reverse(lists:map(fun(N) -> {N, {hello, hello, N}} end, lists:seq(1, 10))), R).
+test_reader_t(_Config) ->
+    M = reader_t:new(identity_m),
+    Monad = 
+        do([M ||
+               Local <- M:ask(),
+               begin
+                   ?assertEqual(hello, Local),
+                   M:return(Local)
+               end]),
+    Monad(hello).

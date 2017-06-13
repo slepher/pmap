@@ -63,7 +63,6 @@ promise_mref(MRef, Timeout) ->
             NCallback = async_m:callback_with_timeout(MRef, Callback, Timeout),
             StoreCallback(MRef, NCallback, State)
     end.
-
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec

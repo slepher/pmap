@@ -6,13 +6,15 @@
 %%% @end
 %%% Created : 25 Mar 2012 by Chen Slepher <slepher@larry.wd201201>
 %%%-------------------------------------------------------------------
--module(pmap_SUITE).
+-module(async_t_SUITE).
 
 -suite_defaults([{timetrap, {minutes, 10}}]).
 
 %% Note: This directive should only be used in test suites.
 -compile(export_all).
 -compile({parse_transform, do}).
+
+-record(state, {callbacks = maps:new()}).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -33,7 +35,8 @@
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
     pmap:start(),
-    Config.
+    {ok, PId} = echo_server:start(),
+    [{echo_server, PId}|Config].
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -94,60 +97,81 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_map, test_pmap_task, test_pmap_monitor, test_pmap_promise].
+    [test_async_t, test_chain_async, test_chain_async_fail].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
 
-test_map() ->
+test_async_t() ->
     [{doc, "Describe the main purpose of this test case"}].
-test_map(Config) when is_list(Config) ->
-    F = fun(A) ->  A * 2 end,
-    Items = lists:seq(1, 10),
-    V1 = lists:map(F, Items),
-    V2 = pmap:map(F, Items),
-    V1 = V2.
-                
-test_pmap_task() ->
+test_async_t(Config) when is_list(Config) ->
+    EchoServer = proplists:get_value(echo_server, Config),
+    M = async_t:new(identity_m),
+    MRef = async_gen_server:call(EchoServer, {ok, hello}),
+    Monad = M:promise(MRef),
+    State = M:run(Monad, 
+                    fun(Reply) ->
+                            ?assertEqual(Reply, {ok, hello})
+                    end, #state.callbacks, #state{}),
+    receive 
+        Info ->
+            case M:handle_info(Info, #state.callbacks, State) of
+                unhandled ->
+                    State;
+                NState ->
+                    ?assertEqual(NState, #state{}),
+                    NState
+            end
+    end.
+
+
+test_chain_async() ->
     [{doc, "Describe the main purpose of this test case"}].
+test_chain_async(Config) when is_list(Config) ->
+    EchoServer = proplists:get_value(echo_server, Config),
+    M = async_t:new(identity_m),
+    MRef = async_gen_server:call(EchoServer, {ok, hello}),
+    Monad = do([M || 
+                   R1 <- M:promise(MRef),
+                   R2 <- M:promise(async_gen_server:call(EchoServer, {ok, world})),
+                   M:return({R1, R2})
+               ]),
+    State = M:run(Monad, 
+                    fun(Reply) ->
+                            ?assertEqual(Reply, {ok, {hello, world}})
+                    end, #state.callbacks, #state{}),
+    receive 
+        Info ->
+            case M:handle_info(Info, #state.callbacks, State) of
+                unhandled ->
+                    State;
+                NState ->
+                    NState
+            end
+    end.
 
-test_pmap_task(Config) when is_list(Config) ->
-    Start = erlang:timestamp(),
-    V = 
-    pmap:task(
-      fun(N) ->
-              pmap:atask(fun() -> timer:sleep(N * 100) end)
-      end, lists:seq(1, 10), 2),
-    End = erlang:timestamp(),
-    V = lists:reverse(lists:map(fun(N) -> {N, ok} end, lists:seq(1, 10))),
-    Used = round(timer:now_diff(End, Start) / 100000),
-    30 = Used.
-
-test_pmap_monitor() ->
+test_chain_async_fail() ->
     [{doc, "Describe the main purpose of this test case"}].
-
-test_pmap_monitor(Config) when is_list(Config) ->
-    V = pmap:monitor_task(
-          fun(N) ->
-                  pmap:atask(fun() -> timer:sleep(N * 100) end)
-          end, lists:seq(1, 10), 2),
-    timer:sleep(150),
-    {progress, {1, [3, 2]}} = pmap:status(V),
-    timer:sleep(3000),
-    {ok, FV} = pmap:status(V),
-    FV = lists:reverse(lists:map(fun(N) -> {N, ok} end, lists:seq(1, 10))).
-
-test_pmap_promise() ->
-    [{doc, "Test pmap promise"}].
-
-test_pmap_promise(_Config) ->
-    {ok, PId} = echo_server:start(),
-    R = 
-    pmap:task(
-      fun(N) ->
-              do([async_m || 
-                     {hello, Reply} <- async_gen_server:promise_call(PId, {hello, N}),
-                     async_gen_server:promise_call(PId, {hello, hello, Reply})
-                 ])
-      end, lists:seq(1, 10), 5),
-    ?assertEqual(lists:reverse(lists:map(fun(N) -> {N, {hello, hello, N}} end, lists:seq(1, 10))), R).
+test_chain_async_fail(Config) when is_list(Config) ->
+    EchoServer = proplists:get_value(echo_server, Config),
+    M = async_t:new(identity_m),
+    MRef = async_gen_server:call(EchoServer, {ok, hello}),
+    Monad = do([M || 
+                   R1 <- M:promise(MRef),
+                   R2 <- M:promise(async_gen_server:call(EchoServer, {error, world})),
+                   R3 <- M:promise(async_gen_server:call(EchoServer, {ok, world2})),
+                   M:return({R1, R2, R3})
+               ]),
+    State = M:run(Monad, 
+                    fun(Reply) ->
+                            ?assertEqual(Reply, {error, world})
+                    end, #state.callbacks, #state{}),
+    receive 
+        Info ->
+            case M:handle_info(Info, #state.callbacks, State) of
+                unhandled ->
+                    State;
+                NState ->
+                    NState
+            end
+    end.
