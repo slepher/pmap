@@ -14,7 +14,7 @@
 -compile(export_all).
 -compile({parse_transform, do}).
 
--record(state, {callbacks = maps:new()}).
+-record(state, {callbacks = maps:new(), acc0 = [], acc = []}).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -97,7 +97,7 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_async_t, test_chain_async, test_chain_async_fail].
+    [test_async_t, test_chain_async, test_chain_async_fail, test_async_t_with_message, test_async_t_with_message_handler].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
@@ -113,16 +113,7 @@ test_async_t(Config) when is_list(Config) ->
                     fun(Reply) ->
                             ?assertEqual(Reply, {ok, hello})
                     end, #state.callbacks, #state{}),
-    receive 
-        Info ->
-            case M:handle_info(Info, #state.callbacks, State) of
-                unhandled ->
-                    State;
-                NState ->
-                    ?assertEqual(NState, #state{}),
-                    NState
-            end
-    end.
+    M:wait_receive(#state.callbacks, State, 1000).
 
 
 test_chain_async() ->
@@ -140,15 +131,8 @@ test_chain_async(Config) when is_list(Config) ->
                     fun(Reply) ->
                             ?assertEqual(Reply, {ok, {hello, world}})
                     end, #state.callbacks, #state{}),
-    receive 
-        Info ->
-            case M:handle_info(Info, #state.callbacks, State) of
-                unhandled ->
-                    State;
-                NState ->
-                    NState
-            end
-    end.
+    M:wait_receive(#state.callbacks, State, 1000).
+
 
 test_chain_async_fail() ->
     [{doc, "test fail in async_t"}].
@@ -166,15 +150,8 @@ test_chain_async_fail(Config) when is_list(Config) ->
                     fun(Reply) ->
                             ?assertEqual(Reply, {error, world})
                     end, #state.callbacks, #state{}),
-    receive 
-        Info ->
-            case M:handle_info(Info, #state.callbacks, State) of
-                unhandled ->
-                    State;
-                NState ->
-                    NState
-            end
-    end.
+    M:wait_receive(#state.callbacks, State, 1000).
+
 
 test_async_t_with_message() ->
     [{doc, "test async_t with message"}].
@@ -185,22 +162,52 @@ test_async_t_with_message(Config) ->
     MRef = echo_server:echo_with_messages(EchoServer, [message, message], hello),
     Monad = do([M || 
                    R1 <- M:promise(MRef),
-                   R2 <- M:promise(echo_server:echo(EchoServer, {error, world})),
-                   R3 <- M:promise(echo_server:echo(EchoServer, hello)),
+                   R2 <- M:promise(echo_server:echo_with_messages(EchoServer, [message, message, message], world)),
+                   M:return({R1, R2})
+               ]),
+    State = M:run(Monad, 
+                    fun({ok, R}, #state{acc = Acc} = State) ->
+                            ?assertEqual(Acc, lists:duplicate(5, message)),
+                            ?assertEqual(R, {hello, world}),
+                            State;
+                        ({message, Message}, #state{acc = Acc} = State)->
+                            NAcc = [Message|Acc],
+                            State#state{acc = NAcc}
+                    end, #state.callbacks, #state{}),
+    M:wait_receive(#state.callbacks, State, 3000).
+
+test_async_t_with_message_handler() ->
+    [{doc, "test async_t with message_handler"}].
+
+test_async_t_with_message_handler(Config) ->
+    EchoServer = proplists:get_value(echo_server, Config),
+    M = async_t:new(identity_m),
+    MRef = echo_server:echo_with_messages(EchoServer, [message, message], hello),
+    Monad = do([M || 
+                   R1 <- M:promise(MRef),
+                   R2 <- M:handle_message(
+                           do([M ||
+                                  M:promise(echo_server:echo_with_messages(
+                                       EchoServer, lists:duplicate(5, message), world)),
+                                  M:promise(echo_server:echo_with_messages(
+                                              EchoServer, lists:duplicate(3, message), world))
+                              ]),
+                           fun(Message, #state{acc0 = Acc0} = State) ->
+                                                  State#state{acc0 = [Message|Acc0]}
+                                          end),
+                   R3 <- M:promise(
+                           echo_server:echo_with_messages(
+                             EchoServer, lists:duplicate(3, message), world)),
                    M:return({R1, R2, R3})
                ]),
     State = M:run(Monad, 
-                    fun({error, R}) ->
-                            ?assertEqual(R, world);
-                        ({message, M})->
-                            ?assertEqual(M, message)
+                    fun({ok, R}, #state{acc0 = Acc0, acc = Acc} = State) ->
+                            ?assertEqual(Acc0, lists:duplicate(8, message)),
+                            ?assertEqual(Acc, lists:duplicate(6, message)),
+                            ?assertEqual(R, {hello, world, world}),
+                            State;
+                        ({message, Message}, #state{acc = Acc} = State)->
+                            NAcc = [Message|Acc],
+                            State#state{acc = NAcc}
                     end, #state.callbacks, #state{}),
-    receive 
-        Info ->
-            case M:handle_info(Info, #state.callbacks, State) of
-                unhandled ->
-                    State;
-                NState ->
-                    NState
-            end
-    end.
+    M:wait_receive(#state.callbacks, State, 3000).

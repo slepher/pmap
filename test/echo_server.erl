@@ -81,7 +81,7 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({echo_with_messages, Messages, Request}, From, State) ->
-    liists:foreach(
+    lists:foreach(
       fun(Message) ->
               async:message(From, Message)
       end, Messages),
