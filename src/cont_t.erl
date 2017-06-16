@@ -52,7 +52,7 @@ fail(E, {?MODULE, M}) ->
 -spec lift(monad:monadic(M, A), M) -> cont_t(_R, M, A).
 lift(X, {?MODULE, M}) ->
     fun(F) ->
-            M:'>>='(X, F, {?MODULE, M})
+            M:'>>='(X, F)
     end.
 
 -spec callCC(fun((fun( (A) -> cont_t(R, M, _B) ))-> cont_t(R, M, A)), M) -> cont_t(R, M, A).
