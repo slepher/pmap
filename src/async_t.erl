@@ -68,7 +68,7 @@ get({?MODULE, M}) ->
     M2 = state_t:new(M1),
     M3 = cont_t:new(M2),
     M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M2:put())).
+    M4:lift(M3:lift(M2:get())).
 
 -spec put(S, M) -> async_t(ok, S, _R, M, _A).
 put(State, {?MODULE, M}) ->
