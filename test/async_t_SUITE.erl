@@ -111,7 +111,7 @@ test_async_t(Config) when is_list(Config) ->
     Monad = M:promise(MRef),
     State = M:run(Monad, 
                     fun(Reply) ->
-                            ?assertEqual(Reply, {ok, hello})
+                            ?assertEqual({ok, hello}, Reply)
                     end, #state.callbacks, #state{}),
     M:wait_receive(#state.callbacks, State, 1000).
 
@@ -129,7 +129,7 @@ test_chain_async(Config) when is_list(Config) ->
                ]),
     State = M:run(Monad, 
                     fun(Reply) ->
-                            ?assertEqual(Reply, {ok, {hello, world}})
+                            ?assertEqual({ok, {hello, world}}, Reply)
                     end, #state.callbacks, #state{}),
     M:wait_receive(#state.callbacks, State, 1000).
 
@@ -148,7 +148,7 @@ test_chain_async_fail(Config) when is_list(Config) ->
                ]),
     State = M:run(Monad, 
                     fun(Reply) ->
-                            ?assertEqual(Reply, {error, world})
+                            ?assertEqual({error, world}, Reply)
                     end, #state.callbacks, #state{}),
     M:wait_receive(#state.callbacks, State, 1000).
 
@@ -167,8 +167,8 @@ test_async_t_with_message(Config) ->
                ]),
     State = M:run(Monad, 
                     fun({ok, R}, #state{acc = Acc} = State) ->
-                            ?assertEqual(Acc, lists:duplicate(5, message)),
-                            ?assertEqual(R, {hello, world}),
+                            ?assertEqual(lists:duplicate(5, message), Acc),
+                            ?assertEqual({hello, world}, R),
                             State;
                         ({message, Message}, #state{acc = Acc} = State)->
                             NAcc = [Message|Acc],
@@ -202,9 +202,9 @@ test_async_t_with_message_handler(Config) ->
                ]),
     State = M:run(Monad, 
                     fun({ok, R}, #state{acc0 = Acc0, acc = Acc} = State) ->
-                            ?assertEqual(Acc0, lists:duplicate(8, message)),
-                            ?assertEqual(Acc, lists:duplicate(6, message)),
-                            ?assertEqual(R, {hello, world, world}),
+                            ?assertEqual(lists:duplicate(8, message), Acc0),
+                            ?assertEqual(lists:duplicate(5, message), Acc),
+                            ?assertEqual({hello, world, world}, R),
                             State;
                         ({message, Message}, #state{acc = Acc} = State)->
                             NAcc = [Message|Acc],
