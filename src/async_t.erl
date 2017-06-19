@@ -15,8 +15,8 @@
 %% API
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
 -export([ask/1, get/1, put/2, callCC/2, lift_reply/2]).
--export([promise/2, promise/3, then/3, handle_message/3]).
--export([run/5, wait_receive/4, wait/4, handle_info/4]).
+-export([promise/2, promise/3, then/3, par/2]).
+-export([run/5, wait_receive/4, wait/4, handle_message/3, handle_info/4]).
 
 
 %% Type constructors in erlang is not supported, I clould not implement type of async_t by other monad_t
@@ -101,11 +101,13 @@ promise(MRef, Timeout, {?MODULE, M} = Monad) ->
     M2 = state_t:new(M1),
     fun(K) ->
             do([M2 || 
-                   StoreCallback <- M2:lift(M1:ask()),
+                   {CallbackGetter, CallbackSetter} <- M2:lift(M1:ask()),
                    State <- M2:get(),
                    begin 
                        NK = callback_with_timeout(K, MRef, Timeout, Monad),
-                       NState = StoreCallback(MRef, NK, State),
+                       Callbacks = CallbackGetter(State),
+                       NCallbacks = maps:put(MRef, NK, Callbacks),
+                       NState = CallbackSetter(NCallbacks, State),
                        M2:put(NState)
                    end
                ])
@@ -115,6 +117,24 @@ promise(MRef, Timeout, {?MODULE, M} = Monad) ->
 then(X, Then, {?MODULE, M}) ->
     Monad = real(M),
     Monad:'>>='(Monad:lift(X), Then).
+
+par(Promises, {?MODULE, M}) ->
+    M1 = reader_t:new(M),
+    M2 = state_t:new(M),
+    fun(K) ->
+            do([M2 ||
+                   CallbacksGS <- M2:lift(M1:ask()),
+                   State <- M2:get(),
+                   begin 
+                       NState = 
+                           lists:foldl(
+                             fun(Promise, S) ->
+                                     (M2:exec(Promise(K), S))(CallbacksGS)
+                             end, State, Promises),
+                       M2:put(NState)
+                   end
+               ])
+    end.
 
 handle_message(X, MessageHandler, {?MODULE, M}) ->
     NMessageHandler = callback_to_k(MessageHandler, {?MODULE, M}),
@@ -137,11 +157,12 @@ run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
     M1 = reader_t:new(M),
     M2 = state_t:new(M1),
     K = callback_to_k(Callback, Monad),
-    StoreCallback = state_store_callback(Offset),
-    (M2:exec(X(K), State))(StoreCallback).
+    CallbacksGS = state_callbacks_gs(Offset),
+    (M2:exec(X(K), State))(CallbacksGS).
 
 wait_receive(Offset, State, Timeout, {?MODULE, _M} = Monad) ->
-    Callbacks = element(Offset, State),
+    {CallbacksG, _CallbacksS} = state_callbacks_gs(Offset),
+    Callbacks = CallbacksG(State),
     case maps:size(Callbacks) of
         0 ->
             State;
@@ -170,20 +191,22 @@ wait_receive(Offset, State, Timeout, {?MODULE, _M} = Monad) ->
 handle_info(Info, Offset, State, {?MODULE, M}) ->
     M1 = reader_t:new(M),
     M2 = state_t:new(M1),
-    StoreCallback = state_store_callback(Offset),
-    Callbacks = element(Offset, State),
+    {CallbacksG, CallbacksS} = state_callbacks_gs(Offset),
+    Callbacks = CallbacksG(State),
     case info_to_a(Info) of
         {MRef, A} ->
             case handle_a(MRef, A, Callbacks) of
                 {Callback, NCallbacks} ->
-                    NState = setelement(Offset, State, NCallbacks),
-                    (M2:exec(Callback(A), NState))(StoreCallback);
+                    NState = CallbacksS(NCallbacks, State),
+                    (M2:exec(Callback(A), NState))({CallbacksG, CallbacksS});
                 error ->
                     M:return(State)
             end;
         unhandled ->
             unhandled
     end.
+
+
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
@@ -259,33 +282,10 @@ execute_callback(Callback, Value, State, {?MODULE, M}) when is_function(Callback
 execute_callback(Callback, _Value, _State, {?MODULE, M}) ->
     M:fail({invalid_callback, Callback}).
 
-state_store_callback(Offset) ->
-    fun(MRef, Callback, State) ->
-            Callbacks = element(Offset, State),
-            NCallbacks = maps:put(MRef, Callback, Callbacks),
-            setelement(Offset, State, NCallbacks)
-    end.
-
-%% incorrect, tobe fixed
-promise2(MRef, Timeout, {?MODULE, _M} = Monad) ->
-    Monad:callCC(
-      fun(K) ->
-              do([Monad ||
-                     Callbacks <- Monad:get(),
-                     begin 
-                         NK = callback_with_timeout(K, MRef, Timeout, Monad),
-                         Monad:put(maps:put(MRef, NK, Callbacks))
-                     end,                    
-                     A <- K(undefined),
-                     NCallbacks <- Monad:get(),
-                     case handle_a(MRef, A, NCallbacks) of
-                         {Reply, Callback, NNCallbacks} ->
-                             do([Monad ||
-                                    Monad:put(NNCallbacks),
-                                    Callback(Reply)
-                                ]);
-                         error ->
-                             Monad:return(undefined)
-                     end
-                 ])
-      end).
+state_callbacks_gs(Offset) ->
+    {fun(State) ->
+             element(Offset, State)
+     end,
+     fun(Callbacks, State) ->
+             setelement(Offset, State, Callbacks)
+     end}.
