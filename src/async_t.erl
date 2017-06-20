@@ -16,7 +16,7 @@
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
 -export([get/1, put/2, callCC/2, lift_reply/2]).
 -export([promise/2, promise/3, then/3, par/2]).
--export([run/5, wait_receive/4, wait/4, handle_message/3, handle_info/4]).
+-export([run/5, wait_receive/4, wait/2, wait/3, wait/5, wait/6, handle_message/3, handle_info/4]).
 
 
 %% Type constructors in erlang is not supported, I clould not implement type of async_t by other monad_t
@@ -139,40 +139,63 @@ handle_message(X, MessageHandler, {?MODULE, M}) ->
                  end
          end, {?MODULE, M}).
 
-wait(X, Callback, Timeout, {?MODULE, _M} = Monad) ->
-    State = run(X, Callback, 2, {state, maps:new()}, Monad),
-    wait_receive(2, State, Timeout, Monad).
-
 run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
     MR = async_r_t:new(M),
     K = callback_to_k(Callback, Monad),
     CallbacksGS = state_callbacks_gs(Offset),
     MR:exec(X(K), CallbacksGS, ok, State).
 
-wait_receive(Offset, State, Timeout, {?MODULE, _M} = Monad) ->
+wait(X, {?MODULE, _M} = Monad) ->
+    wait(X, infinity, Monad).
+
+wait(X, Timeout, {?MODULE, _M} = Monad) ->
+    wait(X, 2, {state, maps:new()}, Timeout, Monad).
+
+wait(X, Offset, State, Timeout, {?MODULE, M} = Monad) ->
+    wait(X,
+         fun(A, _State) ->
+                 M:return(A)
+         end, Offset, State, Timeout, Monad).
+
+wait(X, Callback, Offset, State, Timeout, {?MODULE, _M} = Monad) ->
+    NState = run(X, Callback, Offset, State, Monad),
+    wait_receive(Offset, NState, Timeout, Monad).
+
+wait_receive(Offset, State, Timeout, {?MODULE, M} = Monad) ->
     {CallbacksG, _CallbacksS} = state_callbacks_gs(Offset),
     Callbacks = CallbacksG(State),
     case maps:size(Callbacks) of
-        0 ->
-            State;
+        0 -> 
+            M:return(State);
         _ ->
             receive 
                 Info ->
                     case handle_info(Info, Offset, State, Monad) of
                         unhandled ->
                             wait_receive(Offset, State, Timeout, Monad);
-                        NState ->
-                            wait_receive(Offset, NState, Timeout, Monad)
+                        MNState ->
+                            do([M ||
+                                   NState <- MNState,
+                                   case same_type_state(NState, State) of
+                                       true ->
+                                           wait_receive(Offset, NState, Timeout, Monad);
+                                       false ->
+                                           M:return(NState)
+                                   end
+                               ])
                     end
             after Timeout ->
                     lists:foldl(
-                      fun(MRef, S) ->
-                              case handle_info({MRef, {error, timeout}}, Offset, S, Monad) of
-                                  unhandled ->
-                                      S;
-                                  NS ->
-                                      NS
-                              end
+                      fun(MRef, MS) ->
+                              do([M || 
+                                     S <- MS,
+                                     case handle_info({MRef, {error, timeout}}, Offset, S, Monad) of
+                                         unhandled ->
+                                             M:return(S);
+                                         NS ->
+                                             NS
+                                     end
+                                 ])
                       end, State, maps:keys(Callbacks))
             end
     end.
@@ -273,3 +296,8 @@ state_callbacks_gs(Offset) ->
      fun(Callbacks, State) ->
              setelement(Offset, State, Callbacks)
      end}.
+
+same_type_state(NState, State) when is_tuple(NState), is_tuple(State) ->
+    element(1, NState) == element(1, State);
+same_type_state(_NState, _State) ->
+    false.

@@ -106,108 +106,92 @@ test_async_t() ->
     [{doc, "Describe the main purpose of this test case"}].
 test_async_t(Config) when is_list(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
-    M = async_t:new(identity_m),
+    Monad = async_t:new(identity_m),
     MRef = echo_server:echo(EchoServer, {ok, hello}),
-    Monad = M:promise(MRef),
-    State = M:run(Monad, 
-                    fun(Reply) ->
-                            ?assertEqual({ok, hello}, Reply)
-                    end, #state.callbacks, #state{}),
-    M:wait_receive(#state.callbacks, State, 1000).
-
+    M0 = Monad:promise(MRef),
+    Reply = Monad:wait(M0, infinity),
+    ?assertEqual({ok, hello}, Reply).
 
 test_chain_async() ->
     [{doc, "Describe the main purpose of this test case"}].
 test_chain_async(Config) when is_list(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
-    M = async_t:new(identity_m),
+    Monad = async_t:new(identity_m),
     MRef = echo_server:echo(EchoServer, hello),
-    Monad = do([M || 
-                   R1 <- M:promise(MRef),
-                   R2 <- M:promise(echo_server:echo(EchoServer, {ok, world})),
-                   M:return({R1, R2})
+    M0 = do([Monad || 
+                R1 <- Monad:promise(MRef),
+                R2 <- Monad:promise(echo_server:echo(EchoServer, {ok, world})),
+                return({R1, R2})
                ]),
-    State = M:run(Monad, 
-                    fun(Reply) ->
-                            ?assertEqual({ok, {hello, world}}, Reply)
-                    end, #state.callbacks, #state{}),
-    M:wait_receive(#state.callbacks, State, 1000).
+    Reply = Monad:wait(M0),
+    ?assertEqual({ok, {hello, world}}, Reply).
 
 
 test_chain_async_fail() ->
     [{doc, "test fail in async_t"}].
 test_chain_async_fail(Config) when is_list(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
-    M = async_t:new(identity_m),
+    Monad = async_t:new(identity_m),
     MRef = echo_server:echo(EchoServer, {ok, hello}),
-    Monad = do([M || 
-                   R1 <- M:promise(MRef),
-                   R2 <- M:promise(echo_server:echo(EchoServer, {error, world})),
-                   R3 <- M:promise(echo_server:echo(EchoServer, hello)),
-                   M:return({R1, R2, R3})
+    M0 = do([Monad || 
+                   R1 <- Monad:promise(MRef),
+                   R2 <- Monad:promise(echo_server:echo(EchoServer, {error, world})),
+                   R3 <- Monad:promise(echo_server:echo(EchoServer, hello)),
+                   return({R1, R2, R3})
                ]),
-    State = M:run(Monad, 
-                    fun(Reply) ->
-                            ?assertEqual({error, world}, Reply)
-                    end, #state.callbacks, #state{}),
-    M:wait_receive(#state.callbacks, State, 1000).
-
+    Reply = Monad:wait(M0),
+    ?assertEqual({error, world}, Reply).
 
 test_async_t_with_message() ->
     [{doc, "test async_t with message"}].
 
 test_async_t_with_message(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
-    M = async_t:new(identity_m),
+    Monad = async_t:new(identity_m),
     MRef = echo_server:echo_with_messages(EchoServer, [message, message], hello),
-    Monad = do([M || 
-                   R1 <- M:promise(MRef),
-                   R2 <- M:promise(echo_server:echo_with_messages(EchoServer, [message, message, message], world)),
-                   M:return({R1, R2})
+    M0 = do([Monad || 
+                   R1 <- Monad:promise(MRef),
+                   R2 <- Monad:promise(echo_server:echo_with_messages(EchoServer, [message, message, message], world)),
+                   return({R1, R2})
                ]),
-    State = M:run(Monad, 
-                    fun({ok, R}, #state{acc = Acc} = State) ->
-                            ?assertEqual(lists:duplicate(5, message), Acc),
-                            ?assertEqual({hello, world}, R),
-                            State;
-                        ({message, Message}, #state{acc = Acc} = State)->
-                            NAcc = [Message|Acc],
-                            State#state{acc = NAcc}
-                    end, #state.callbacks, #state{}),
-    M:wait_receive(#state.callbacks, State, 3000).
+    Reply = Monad:wait(M0,
+                       fun({ok, R}, #state{acc = Acc}) ->
+                               {R, Acc};
+                          ({message, Message}, #state{acc = Acc} = State)->
+                               NAcc = [Message|Acc],
+                               State#state{acc = NAcc}
+                       end, #state.callbacks, #state{}, infinity),
+    ?assertEqual({{hello, world}, lists:duplicate(5, message)}, Reply).
 
 test_async_t_with_message_handler() ->
     [{doc, "test async_t with message_handler"}].
 
 test_async_t_with_message_handler(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
-    M = async_t:new(identity_m),
+    Monad = async_t:new(identity_m),
     MRef = echo_server:echo_with_messages(EchoServer, [message, message], hello),
-    Monad = do([M || 
-                   R1 <- M:promise(MRef),
-                   R2 <- M:handle_message(
-                           do([M ||
-                                  M:promise(echo_server:echo_with_messages(
-                                       EchoServer, lists:duplicate(5, message), world)),
-                                  M:promise(echo_server:echo_with_messages(
-                                              EchoServer, lists:duplicate(3, message), world))
+    M0 = do([Monad || 
+                R1 <- Monad:promise(MRef),
+                R2 <- Monad:handle_message(
+                           do([Monad ||
+                                  Monad:promise(echo_server:echo_with_messages(
+                                                  EchoServer, lists:duplicate(5, message), world)),
+                                  Monad:promise(echo_server:echo_with_messages(
+                                                  EchoServer, lists:duplicate(3, message), world))
                               ]),
                            fun(Message, #state{acc0 = Acc0} = State) ->
-                                                  State#state{acc0 = [Message|Acc0]}
-                                          end),
-                   R3 <- M:promise(
+                                   State#state{acc0 = [Message|Acc0]}
+                           end),
+                R3 <- Monad:promise(
                            echo_server:echo_with_messages(
                              EchoServer, lists:duplicate(3, message), world)),
-                   M:return({R1, R2, R3})
+                return({R1, R2, R3})
                ]),
-    State = M:run(Monad, 
-                    fun({ok, R}, #state{acc0 = Acc0, acc = Acc} = State) ->
-                            ?assertEqual(lists:duplicate(8, message), Acc0),
-                            ?assertEqual(lists:duplicate(5, message), Acc),
-                            ?assertEqual({hello, world, world}, R),
-                            State;
-                        ({message, Message}, #state{acc = Acc} = State)->
-                            NAcc = [Message|Acc],
-                            State#state{acc = NAcc}
-                    end, #state.callbacks, #state{}),
-    M:wait_receive(#state.callbacks, State, 3000).
+    Reply = Monad:wait(M0,
+                       fun({ok, R}, #state{acc0 = Acc0, acc = Acc}) ->
+                               {R, Acc0, Acc};
+                          ({message, Message}, #state{acc = Acc} = State)->
+                               NAcc = [Message|Acc],
+                               State#state{acc = NAcc}
+                       end, #state.callbacks, #state{}, infinity),
+    ?assertEqual({{hello, world, world}, lists:duplicate(8, message), lists:duplicate(5, message)}, Reply).
