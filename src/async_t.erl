@@ -48,24 +48,24 @@ fail(X, {?MODULE, M}) ->
 
 -spec lift(monad:monadic(M, A), M) -> async_t(_C, _S, _R, M, A).
 lift(F, {?MODULE, M}) ->
-    M1 = result_t:new(M),
-    M3 = cont_t:new(M1),
-    M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M1:lift(F))).
+    MR = result_t:new(M),
+    M1 = cont_t:new(MR),
+    M2 = reply_t:new(M1),
+    M2:lift(M1:lift(MR:lift(F))).
 
 -spec get(M) -> async_t(S, S, _R, M, _A).
 get({?MODULE, M}) ->
-    M1 = result_t:new(M),
-    M3 = cont_t:new(M1),
-    M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M1:get())).
+    MR = result_t:new(M),
+    M1 = cont_t:new(MR),
+    M2 = reply_t:new(M1),
+    M2:lift(M1:lift(MR:get())).
 
 -spec put(S, M) -> async_t(ok, S, _R, M, _A).
 put(State, {?MODULE, M}) ->
-    M1 = result_t:new(M),
-    M3 = cont_t:new(M1),
-    M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M1:put(State))).
+    MR = result_t:new(M),
+    M1 = cont_t:new(MR),
+    M2 = reply_t:new(M1),
+    M2:lift(M1:lift(MR:put(State))).
 
 -spec lift_reply(async_t(C, S, R, M, A), M) -> async_t(C, S, R, M, reply_t:reply_t(identity_m, A)).
 lift_reply(F, {?MODULE, M}) ->
@@ -74,10 +74,10 @@ lift_reply(F, {?MODULE, M}) ->
 
 -spec callCC(fun((fun( (A) -> async_t(C, S, R, M, _B) ))-> async_t(C, S, R, M, A)), M) -> async_t(C, S, R, M, A).
 callCC(F,  {?MODULE, M}) ->
-    M1 = result_t:new(M),
-    M3 = cont_t:new(M1),
-    M4 = reply_t:new(M3),
-    M4:lift(M3:callCC(F)).
+    MR = result_t:new(M),
+    M1 = cont_t:new(MR),
+    M2 = reply_t:new(M1),
+    M2:lift(M1:callCC(F)).
 
 -spec promise(any(), M) -> async_t(_C, _S, _R, M, _A).
 promise(MRef, {?MODULE, _M} = Monad) ->
@@ -140,11 +140,10 @@ wait(X, Callback, Timeout, {?MODULE, _M} = Monad) ->
     wait_receive(2, State, Timeout, Monad).
 
 run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    MR = result_t:new(M),
     K = callback_to_k(Callback, Monad),
     CallbacksGS = state_callbacks_gs(Offset),
-    (M2:exec(X(K), State))(CallbacksGS).
+    MR:exec(X(K), State, CallbacksGS).
 
 wait_receive(Offset, State, Timeout, {?MODULE, _M} = Monad) ->
     {CallbacksG, _CallbacksS} = state_callbacks_gs(Offset),
@@ -190,8 +189,6 @@ handle_info(Info, Offset, State, {?MODULE, M}) ->
         unhandled ->
             unhandled
     end.
-
-
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec
