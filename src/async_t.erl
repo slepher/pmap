@@ -48,21 +48,21 @@ fail(X, {?MODULE, M}) ->
 
 -spec lift(monad:monadic(M, A), M) -> async_t(_C, _S, _R, M, A).
 lift(F, {?MODULE, M}) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:lift(MR:lift(F))).
 
 -spec get(M) -> async_t(S, S, _R, M, _A).
 get({?MODULE, M}) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:lift(MR:get())).
 
 -spec put(S, M) -> async_t(ok, S, _R, M, _A).
 put(State, {?MODULE, M}) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:lift(MR:put(State))).
@@ -74,7 +74,7 @@ lift_reply(F, {?MODULE, M}) ->
 
 -spec callCC(fun((fun( (A) -> async_t(C, S, R, M, _B) ))-> async_t(C, S, R, M, A)), M) -> async_t(C, S, R, M, A).
 callCC(F,  {?MODULE, M}) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:callCC(F)).
@@ -85,15 +85,16 @@ promise(MRef, {?MODULE, _M} = Monad) ->
 
 -spec promise(any(), integer(), M) -> async_t(_C, _S, _R, M, _A).
 promise(MRef, Timeout, {?MODULE, M} = Monad) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     fun(K) ->
             do([MR || 
                    {CallbackGetter, CallbackSetter} <- MR:ask(),
                    State <- MR:get(),
+                   Acc <- MR:get_acc(),
                    begin 
                        NK = callback_with_timeout(K, MRef, Timeout, Monad),
                        Callbacks = CallbackGetter(State),
-                       NCallbacks = maps:put(MRef, NK, Callbacks),
+                       NCallbacks = maps:put(MRef, {NK, Acc}, Callbacks),
                        NState = CallbackSetter(NCallbacks, State),
                        MR:put(NState)
                    end
@@ -105,18 +106,21 @@ then(X, Then, {?MODULE, M}) ->
     Monad = real(M),
     Monad:'>>='(Monad:lift(X), Then).
 
+
+%% TODO: usage of Acc here is not right
 par(Promises, {?MODULE, M}) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     fun(K) ->
             do([MR ||
                    CallbacksGS <- MR:ask(),
                    State <- MR:get(),
+                   Acc <- MR:get_acc(),
                    begin 
                        NState = 
                            lists:foldl(
-                             fun(Promise, S) ->
-                                     MR:exec(Promise(K), S, CallbacksGS)
-                             end, State, Promises),
+                             fun(Promise, {Acc1, S}) ->
+                                     MR:exec(Promise(K), CallbacksGS, Acc1, S)
+                             end, {Acc, State}, Promises),
                        MR:put(NState)
                    end
                ])
@@ -140,10 +144,10 @@ wait(X, Callback, Timeout, {?MODULE, _M} = Monad) ->
     wait_receive(2, State, Timeout, Monad).
 
 run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     K = callback_to_k(Callback, Monad),
     CallbacksGS = state_callbacks_gs(Offset),
-    MR:exec(X(K), State, CallbacksGS).
+    MR:exec(X(K), CallbacksGS, ok, State).
 
 wait_receive(Offset, State, Timeout, {?MODULE, _M} = Monad) ->
     {CallbacksG, _CallbacksS} = state_callbacks_gs(Offset),
@@ -174,15 +178,15 @@ wait_receive(Offset, State, Timeout, {?MODULE, _M} = Monad) ->
     end.
                     
 handle_info(Info, Offset, State, {?MODULE, M}) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     {CallbacksG, CallbacksS} = state_callbacks_gs(Offset),
     Callbacks = CallbacksG(State),
     case info_to_a(Info) of
         {MRef, A} ->
             case handle_a(MRef, A, Callbacks) of
-                {Callback, NCallbacks} ->
+                {Callback, Acc, NCallbacks} ->
                     NState = CallbacksS(NCallbacks, State),
-                    MR:exec(Callback(A), NState, {CallbacksG, CallbacksS});
+                    MR:exec(Callback(A), {CallbacksG, CallbacksS}, Acc, NState);
                 error ->
                     M:return(State)
             end;
@@ -199,10 +203,10 @@ handle_info(Info, Offset, State, {?MODULE, M}) ->
 %%% Internal functions
 %%%===================================================================
 real(M) ->
-    reply_t:new(cont_t:new(result_t:new(M))).
+    reply_t:new(cont_t:new(async_r_t:new(M))).
 
 callback_to_k(Callback, {?MODULE, M} = Monad) ->
-    MR = result_t:new(M),
+    MR = async_r_t:new(M),
     fun(A) ->
             do([MR || 
                    State <- MR:get(),
@@ -222,17 +226,17 @@ info_to_a(_Info) ->
 
 handle_a(MRef, {message, _Message}, Callbacks) when is_reference(MRef) ->
     case maps:find(MRef, Callbacks) of
-        {ok, Callback} ->
-            {Callback, Callbacks};
+        {ok, {Callback, Acc}} ->
+            {Callback, Acc, Callbacks};
         error ->
             error
     end;
 handle_a(MRef, _Reply, Callbacks) when is_reference(MRef) ->
     erlang:demonitor(MRef, [flush]),
     case maps:find(MRef, Callbacks) of
-        {ok, Callback} ->
+        {ok, {Callback, Acc}} ->
             NCallbacks = maps:remove(MRef, Callbacks),
-            {Callback, NCallbacks};
+            {Callback, Acc, NCallbacks};
         error ->
             error
     end.
