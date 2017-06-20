@@ -14,7 +14,7 @@
 
 %% API
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
--export([ask/1, get/1, put/2, callCC/2, lift_reply/2]).
+-export([get/1, put/2, callCC/2, lift_reply/2]).
 -export([promise/2, promise/3, then/3, par/2]).
 -export([run/5, wait_receive/4, wait/4, handle_message/3, handle_info/4]).
 
@@ -48,35 +48,24 @@ fail(X, {?MODULE, M}) ->
 
 -spec lift(monad:monadic(M, A), M) -> async_t(_C, _S, _R, M, A).
 lift(F, {?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
-    M3 = cont_t:new(M2),
+    M1 = result_t:new(M),
+    M3 = cont_t:new(M1),
     M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M2:lift(M1:lift(F)))).
-
--spec ask(M) -> async_t(R, _S, R, M, _A).
-ask({?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
-    M3 = cont_t:new(M2),
-    M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M2:lift(M1:ask()))).
+    M4:lift(M3:lift(M1:lift(F))).
 
 -spec get(M) -> async_t(S, S, _R, M, _A).
 get({?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
-    M3 = cont_t:new(M2),
+    M1 = result_t:new(M),
+    M3 = cont_t:new(M1),
     M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M2:get())).
+    M4:lift(M3:lift(M1:get())).
 
 -spec put(S, M) -> async_t(ok, S, _R, M, _A).
 put(State, {?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
-    M3 = cont_t:new(M2),
+    M1 = result_t:new(M),
+    M3 = cont_t:new(M1),
     M4 = reply_t:new(M3),
-    M4:lift(M3:lift(M2:put(State))).
+    M4:lift(M3:lift(M1:put(State))).
 
 -spec lift_reply(async_t(C, S, R, M, A), M) -> async_t(C, S, R, M, reply_t:reply_t(identity_m, A)).
 lift_reply(F, {?MODULE, M}) ->
@@ -85,9 +74,8 @@ lift_reply(F, {?MODULE, M}) ->
 
 -spec callCC(fun((fun( (A) -> async_t(C, S, R, M, _B) ))-> async_t(C, S, R, M, A)), M) -> async_t(C, S, R, M, A).
 callCC(F,  {?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
-    M3 = cont_t:new(M2),
+    M1 = result_t:new(M),
+    M3 = cont_t:new(M1),
     M4 = reply_t:new(M3),
     M4:lift(M3:callCC(F)).
 
@@ -97,18 +85,17 @@ promise(MRef, {?MODULE, _M} = Monad) ->
 
 -spec promise(any(), integer(), M) -> async_t(_C, _S, _R, M, _A).
 promise(MRef, Timeout, {?MODULE, M} = Monad) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    MR = result_t:new(M),
     fun(K) ->
-            do([M2 || 
-                   {CallbackGetter, CallbackSetter} <- M2:lift(M1:ask()),
-                   State <- M2:get(),
+            do([MR || 
+                   {CallbackGetter, CallbackSetter} <- MR:ask(),
+                   State <- MR:get(),
                    begin 
                        NK = callback_with_timeout(K, MRef, Timeout, Monad),
                        Callbacks = CallbackGetter(State),
                        NCallbacks = maps:put(MRef, NK, Callbacks),
                        NState = CallbackSetter(NCallbacks, State),
-                       M2:put(NState)
+                       MR:put(NState)
                    end
                ])
     end.
@@ -119,19 +106,18 @@ then(X, Then, {?MODULE, M}) ->
     Monad:'>>='(Monad:lift(X), Then).
 
 par(Promises, {?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M),
+    MR = result_t:new(M),
     fun(K) ->
-            do([M2 ||
-                   CallbacksGS <- M2:lift(M1:ask()),
-                   State <- M2:get(),
+            do([MR ||
+                   CallbacksGS <- MR:ask(),
+                   State <- MR:get(),
                    begin 
                        NState = 
                            lists:foldl(
                              fun(Promise, S) ->
-                                     (M2:exec(Promise(K), S))(CallbacksGS)
+                                     MR:exec(Promise(K), S, CallbacksGS)
                              end, State, Promises),
-                       M2:put(NState)
+                       MR:put(NState)
                    end
                ])
     end.
@@ -189,8 +175,7 @@ wait_receive(Offset, State, Timeout, {?MODULE, _M} = Monad) ->
     end.
                     
 handle_info(Info, Offset, State, {?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    MR = result_t:new(M),
     {CallbacksG, CallbacksS} = state_callbacks_gs(Offset),
     Callbacks = CallbacksG(State),
     case info_to_a(Info) of
@@ -198,7 +183,7 @@ handle_info(Info, Offset, State, {?MODULE, M}) ->
             case handle_a(MRef, A, Callbacks) of
                 {Callback, NCallbacks} ->
                     NState = CallbacksS(NCallbacks, State),
-                    (M2:exec(Callback(A), NState))({CallbacksG, CallbacksS});
+                    MR:exec(Callback(A), NState, {CallbacksG, CallbacksS});
                 error ->
                     M:return(State)
             end;
@@ -217,17 +202,15 @@ handle_info(Info, Offset, State, {?MODULE, M}) ->
 %%% Internal functions
 %%%===================================================================
 real(M) ->
-    reply_t:new(cont_t:new(state_t:new(reader_t:new(M)))).
+    reply_t:new(cont_t:new(result_t:new(M))).
 
-callback_to_k(Callback, {?MODULE, M} = M4) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+callback_to_k(Callback, {?MODULE, M} = Monad) ->
+    MR = result_t:new(M),
     fun(A) ->
-            do([M2 || 
-                   State <- M2:get(),
-                   NState <- 
-                       M2:lift(M1:lift(execute_callback(Callback, A, State, M4))),
-                   M2:put(NState)
+            do([MR || 
+                   State <- MR:get(),
+                   NState <- MR:lift(execute_callback(Callback, A, State, Monad)),
+                   MR:put(NState)
                ])
     end.
 
