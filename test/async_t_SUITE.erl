@@ -97,7 +97,7 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_async_t, test_chain_async, test_chain_async_fail, test_async_t_with_message, test_async_t_with_message_handler].
+    [test_async_t, test_chain_async, test_chain_async_fail, test_async_t_with_message, test_async_t_with_message_handler, test_asycn_t_par].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
@@ -156,12 +156,12 @@ test_async_t_with_message(Config) ->
                ]),
     Reply = Monad:wait(M0,
                        fun({ok, R}, #state{acc = Acc}) ->
-                               {R, Acc};
+                               [R, Acc];
                           ({message, Message}, #state{acc = Acc} = State)->
                                NAcc = [Message|Acc],
                                State#state{acc = NAcc}
                        end, #state.callbacks, #state{}, infinity),
-    ?assertEqual({{hello, world}, lists:duplicate(5, message)}, Reply).
+    ?assertEqual([{hello, world}, lists:duplicate(5, message)], Reply).
 
 test_async_t_with_message_handler() ->
     [{doc, "test async_t with message_handler"}].
@@ -195,3 +195,14 @@ test_async_t_with_message_handler(Config) ->
                                State#state{acc = NAcc}
                        end, #state.callbacks, #state{}, infinity),
     ?assertEqual({{hello, world, world}, lists:duplicate(8, message), lists:duplicate(5, message)}, Reply).
+
+
+test_asycn_t_par(Config) ->
+    EchoServer = proplists:get_value(echo_server, Config),
+    Monad = async_t:new(identity_m),
+    M0 = Monad:promise(fun() -> echo_server:echo(EchoServer, hello) end),
+    Promises = lists:duplicate(3, M0),
+    M1 = Monad:par(Promises),
+    Reply = Monad:wait(M1),
+    ?assertEqual([{1, hello}, {2, hello}, {3, hello}], Reply).
+                               

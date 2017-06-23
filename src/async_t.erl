@@ -14,7 +14,7 @@
 
 %% API
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
--export([get/1, put/2, callCC/2, lift_reply/2]).
+-export([get/1, put/2, callCC/2, lift_reply/2, pure_return/2]).
 -export([promise/2, promise/3, then/3, par/2]).
 -export([run/5, wait_receive/4, wait/2, wait/3, wait/5, wait/6, handle_message/3, handle_info/4]).
 
@@ -72,6 +72,10 @@ lift_reply(F, {?MODULE, M}) ->
     Monad = real(M),
     Monad:lift_reply(F).
 
+pure_return(X, {?MODULE, M}) ->
+    Monad = real(M),
+    Monad:pure_return(X).
+
 -spec callCC(fun((fun( (A) -> async_t(C, S, R, M, _B) ))-> async_t(C, S, R, M, A)), M) -> async_t(C, S, R, M, A).
 callCC(F,  {?MODULE, M}) ->
     MR = async_r_t:new(M),
@@ -84,22 +88,20 @@ promise(MRef, {?MODULE, _M} = Monad) ->
     promise(MRef, infinity, Monad).
 
 -spec promise(any(), integer(), M) -> async_t(_C, _S, _R, M, _A).
-promise(MRef, Timeout, {?MODULE, M} = Monad) ->
+promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
     MR = async_r_t:new(M),
     fun(K) ->
+            MRef = Action(),
             do([MR || 
-                   {CallbackGetter, CallbackSetter} <- MR:ask(),
-                   State <- MR:get(),
                    Acc <- MR:get_acc(),
                    begin 
                        NK = callback_with_timeout(K, MRef, Timeout, Monad),
-                       Callbacks = CallbackGetter(State),
-                       NCallbacks = maps:put(MRef, {NK, Acc}, Callbacks),
-                       NState = CallbackSetter(NCallbacks, State),
-                       MR:put(NState)
+                       MR:put_ref(MRef, {NK, Acc})
                    end
                ])
-    end.
+    end;
+promise(MRef, Timeout, {?MODULE, _M} = Monad) when is_reference(MRef) ->
+    Monad:promise(fun() -> MRef end, Timeout).
 
 -spec then(async_t(C, S, R, M, A), fun((A) -> async_t(C, S, R, M, B)), M) -> async_t(C, S, R, M, B).
 then(X, Then, {?MODULE, M}) ->
@@ -108,23 +110,58 @@ then(X, Then, {?MODULE, M}) ->
 
 
 %% TODO: usage of Acc here is not right
-par(Promises, {?MODULE, M}) ->
+par(Promises, {?MODULE, M} = Monad) ->
     MR = async_r_t:new(M),
+    Len = length(Promises),
+    NPromises = 
+        lists:map(
+          fun(N) ->
+                  Promise = lists:nth(N, Promises),
+                  do([Monad ||
+                         Val <- Monad:lift(Promise),
+                         Monad:pure_return({N, Val})
+                     ])
+          end, lists:seq(1, Len)),
     fun(K) ->
+            Acc0 = {lists:seq(1, Len), ordsets:new()},
+            Ref = make_ref(),
             do([MR ||
-                   CallbacksGS <- MR:ask(),
-                   State <- MR:get(),
-                   Acc <- MR:get_acc(),
+                   OriginAcc <- MR:get_acc(),
+                   MR:put_ref(Ref, Acc0),
                    begin 
-                       NState = 
-                           lists:foldl(
-                             fun(Promise, {Acc1, S}) ->
-                                     MR:exec(Promise(K), CallbacksGS, Acc1, S)
-                             end, {Acc, State}, Promises),
-                       MR:put(NState)
+                       NK = 
+                           % TODO and process for messages
+                           fun({_N, {message, _M} = Message}) ->
+                                   K(Message);
+                              ({N, Reply}) ->
+                                   do([MR ||
+                                          Acc <- MR:find_ref(Ref),
+                                          begin
+                                              case Acc of
+                                                  {ok, {Ws, Cs}} ->
+                                                      NWs = lists:delete(N, Ws),
+                                                      NCs = orddict:store(N, Reply, Cs),
+                                                      case NWs of
+                                                          [] ->
+                                                              do([MR ||
+                                                                     MR:put_acc(OriginAcc),
+                                                                     MR:remove_ref(Ref),
+                                                                     K(NCs)
+                                                                 ]);
+                                                          _ ->
+                                                              MR:put_ref(Ref, {NWs, NCs})
+                                                      end;
+                                                  _ ->
+                                                      M:fail({invalid_acc, Acc})
+                                              end
+                                          end
+                                      ])
+                           end,
+                       monad:sequence(MR, lists:map(fun(Promise) -> Promise(NK) end, NPromises))
                    end
                ])
     end.
+
 
 handle_message(X, MessageHandler, {?MODULE, M}) ->
     NMessageHandler = callback_to_k(MessageHandler, {?MODULE, M}),

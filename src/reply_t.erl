@@ -20,7 +20,7 @@
 -export_type([reply_t/2]).
 
 -behaviour(monad_trans).
--export([new/1, '>>='/3, return/2, fail/2, run/2, lift/2, lift_reply/2]).
+-export([new/1, '>>='/3, return/2, fail/2, run/2, pure_return/2, lift/2, lift_reply/2]).
 
 -opaque reply_t(M, A) :: monad:monadic(M, ok | {ok, A} | {error, any()} | A).
 
@@ -46,6 +46,7 @@ new(M) ->
 return(ok, {?MODULE, M}) -> M:return(ok);
 return(X , {?MODULE, M}) -> M:return({ok, X}).
 
+
 -spec fail(any(), M) -> reply_t(M, _A).
 fail(E, {?MODULE, M}) ->
     M:return({error, E}).
@@ -54,6 +55,8 @@ fail(E, {?MODULE, M}) ->
 -spec run(reply_t(M, A), M) -> monad:monadic(M, ok | {ok, A} | {error, any()} | {message, any()}).
 run(EM, _M) -> EM.
 
+pure_return(X, {?MODULE, M}) ->
+    M:return(X).
 
 -spec lift(monad:monadic(M, A), M) -> reply_t(M, A).
 lift(X, {?MODULE, M}) ->

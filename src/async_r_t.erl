@@ -16,6 +16,7 @@
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
 -export([ask/1, get/1, put/2]).
 -export([get_acc/1, put_acc/2]).
+-export([find_ref/2, put_ref/3, remove_ref/2]).
 -export([exec/5]).
 
 
@@ -87,6 +88,40 @@ put_acc(State, {?MODULE, M}) ->
     M2 = state_t:new(M1),
     M3 = state_t:new(M2),
     M3:lift(M2:put(State)).
+
+find_ref(MRef, {?MODULE, _M} = Monad) ->
+    do([Monad ||
+           {CallbacksGetter, _CallbacksSetter} <- Monad:ask(),
+           State <- Monad:get(),
+           begin
+               Callbacks = CallbacksGetter(State),
+               return(maps:find(MRef, Callbacks))
+           end
+       ]).
+
+put_ref(MRef, Data, {?MODULE, _M} = Monad) ->
+    do([Monad ||
+           {CallbacksGetter, CallbacksSetter} <- Monad:ask(),
+           State <- Monad:get(),
+           begin
+               Callbacks = CallbacksGetter(State),
+               NCallbacks = maps:put(MRef, Data, Callbacks),
+               NState = CallbacksSetter(NCallbacks, State),
+               Monad:put(NState)
+           end
+       ]).
+
+remove_ref(MRef, {?MODULE, _M} = Monad) ->
+    do([Monad ||
+           {CallbacksGetter, CallbacksSetter} <- Monad:ask(),
+           State <- Monad:get(),
+           begin
+               Callbacks = CallbacksGetter(State),
+               NCallbacks = maps:remove(MRef, Callbacks),
+               NState = CallbacksSetter(NCallbacks, State),
+               Monad:put(NState)
+           end
+       ]).
 
 -spec exec(async_r_t(R, C, S, M, _A), R, C, S, M) -> S.
 exec(X, CallbacksGS, Acc, State, {?MODULE, M}) ->
