@@ -36,6 +36,7 @@ new(M) ->
              case R of
                  {error, _Err} = Error -> return(Error);
                  {message, _Msg} = Message -> return(Message);
+                 ignore                  -> return(ignore);
                  {ok,  Result}         -> Fun(Result);
                  Result                -> Fun(Result)
              end

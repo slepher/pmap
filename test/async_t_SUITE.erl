@@ -97,7 +97,7 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_async_t, test_chain_async, test_chain_async_fail, test_async_t_with_message, test_async_t_with_message_handler, test_asycn_t_par].
+    [test_async_t, test_chain_async, test_chain_async_fail, test_async_t_with_message, test_async_t_with_message_handler, test_async_t_par, test_async_t_pmap, test_async_t_pmap_with_acc].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
@@ -196,13 +196,64 @@ test_async_t_with_message_handler(Config) ->
                        end, #state.callbacks, #state{}, infinity),
     ?assertEqual({{hello, world, world}, lists:duplicate(8, message), lists:duplicate(5, message)}, Reply).
 
+test_async_t_par(_Config) ->
+    MR = async_r_t:new(identity_m),
+    Monad = async_t:new(identity_m),
+    M1 = Monad:par(
+           [Monad:message(hello_message),
+            Monad:return(hello)
+           ]),
+    Reply = Monad:wait(M1,
+              fun({message, M}) ->
+                      MR:put_acc(M);
+                 (Reply) ->
+                      do([MR ||
+                             Acc <- MR:get_acc(),
+                             MR:put({Acc, Reply})
+                         ])
+              end),
+    ?assertEqual({hello_message, {ok, hello}}, Reply).
+                        
 
-test_asycn_t_par(Config) ->
+test_async_t_pmap(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     Monad = async_t:new(identity_m),
     M0 = Monad:promise(fun() -> echo_server:echo(EchoServer, hello) end),
     Promises = lists:duplicate(3, M0),
-    M1 = Monad:par(Promises),
+    M1 = Monad:pmap(Promises),
     Reply = Monad:wait(M1),
-    ?assertEqual([{1, hello}, {2, hello}, {3, hello}], Reply).
+    ?assertEqual([hello, hello, hello], Reply).
+                               
+
+test_async_t_pmap_with_acc(Config) ->
+    EchoServer = proplists:get_value(echo_server, Config),
+    Monad = async_t:new(identity_m),
+    M0 =  Monad:promise(fun() -> echo_server:echo(EchoServer, hello) end),
+    Promises = lists:foldl(
+                 fun(N, Acc0) ->
+                         MA = 
+                             do([Monad || 
+                                    Val <- Monad:lift_reply(M0),
+                                    Acc <- Monad:get_acc(),
+                                    Monad:put_acc([N|Acc]),
+                                    Monad:pure_return(Val)
+                                ]),
+                         maps:put(N, MA, Acc0)
+                 end, maps:new(), lists:seq(1, 3)),
+    M1 = do([Monad ||
+                Monad:put_acc([]),
+                Monad:pmap(Promises)
+            ]),
+    MR = async_r_t:new(identity_m),
+    Reply = Monad:wait(M1, 
+              fun({message, _X}) -> 
+                      MR:return(ok);
+                 (X) ->
+                      do([MR ||
+                             Acc <- MR:get_acc(),
+                             MR:put({X, Acc})
+                         ])
+              end
+             ),
+    ?assertEqual({maps:from_list([{1,  hello}, {2,  hello}, {3,  hello}]), [3,2,1]}, Reply).
                                

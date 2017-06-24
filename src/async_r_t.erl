@@ -15,8 +15,8 @@
 %% API
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
 -export([ask/1, get/1, put/2]).
--export([get_acc/1, put_acc/2]).
--export([find_ref/2, put_ref/3, remove_ref/2]).
+-export([get_acc_ref/1, get_acc/1, put_acc/2]).
+-export([find_ref/2, get_ref/3, put_ref/3, remove_ref/2]).
 -export([exec/5]).
 
 
@@ -50,44 +50,52 @@ fail(X, {?MODULE, M}) ->
 -spec lift(monad:monadic(M, A), M) -> async_r_t(_R, _C, _S,  M, A).
 lift(F, {?MODULE, M}) ->
     M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
     M3:lift(M2:lift(M1:lift(F))).
 
 -spec ask(M) -> async_r_t(R, _C, _S, M, R).
 ask({?MODULE, M}) ->
     M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
     M3:lift(M2:lift(M1:ask())).
 
 -spec get(M) -> async_r_t(_R, _C, S,  M, S).
 get({?MODULE, M}) ->
     M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
     M3:get().
 
 -spec put(S, M) -> async_r_t(_R, _C, S, M, ok).
 put(State, {?MODULE, M}) ->
     M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
     M3:put(State).
 
--spec get_acc(M) -> async_r_t(_R, C, _S, M, C).
-get_acc({?MODULE, M}) ->
+get_acc_ref({?MODULE, M}) ->
     M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
-    M3:lift(M2:get()).
+    M3:lift(M2:ask()).
+
+-spec get_acc(M) -> async_r_t(_R, C, _S, M, C).
+get_acc({?MODULE, _M} = Monad) ->
+    do([Monad || 
+           Ref <- Monad:get_acc_ref(),
+           Monad:get_ref(Ref, undefined)
+       ]).
 
 -spec put_acc(C, M) -> async_r_t(_R, C, _S, M, ok).
-put_acc(State, {?MODULE, M}) ->
-    M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
-    M3 = state_t:new(M2),
-    M3:lift(M2:put(State)).
+put_acc(Acc, {?MODULE, _M} = Monad) ->
+    do([Monad || 
+           Ref <- Monad:get_acc_ref(),
+           begin
+               Monad:put_ref(Ref, Acc)
+           end
+       ]).
 
 find_ref(MRef, {?MODULE, _M} = Monad) ->
     do([Monad ||
@@ -96,6 +104,16 @@ find_ref(MRef, {?MODULE, _M} = Monad) ->
            begin
                Callbacks = CallbacksGetter(State),
                return(maps:find(MRef, Callbacks))
+           end
+       ]).
+
+get_ref(MRef, Default, {?MODULE, _M} = Monad) ->
+    do([Monad ||
+           {CallbacksGetter, _CallbacksSetter} <- Monad:ask(),
+           State <- Monad:get(),
+           begin
+               Callbacks = CallbacksGetter(State),
+               return(maps:get(MRef, Callbacks, Default))
            end
        ]).
 
@@ -126,9 +144,9 @@ remove_ref(MRef, {?MODULE, _M} = Monad) ->
 -spec exec(async_r_t(R, C, S, M, _A), R, C, S, M) -> S.
 exec(X, CallbacksGS, Acc, State, {?MODULE, M}) ->
     M1 = reader_t:new(M),
-    M2 = state_t:new(M1),
+    M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
-    M1:run((M2:eval(M3:exec(X, State), Acc)), CallbacksGS).
+    M1:run((M2:run(M3:exec(X, State), Acc)), CallbacksGS).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -140,4 +158,4 @@ exec(X, CallbacksGS, Acc, State, {?MODULE, M}) ->
 %%% Internal functions
 %%%===================================================================
 real(M) ->
-    state_t:new(state_t:new(reader_t:new(M))).
+    state_t:new(reader_t:new(reader_t:new(M))).
