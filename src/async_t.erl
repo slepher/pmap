@@ -184,13 +184,15 @@ pmap(Promises, Options, {?MODULE, _M} = Monad) ->
                          Working <- Monad:get_ref(WRef, []),
                          Monad:put_ref(WRef, [Key|Working]),
                          Val <- Monad:lift_reply_all(Promise),
-                         Monad:par([
-                                    do([Monad || 
-                                           Monad:local_acc_ref(CRef, CC(Key, Val)),
-                                           Monad:pass()
-                                       ]),
-                                    Monad:pure_return(Val)
-                                   ]),
+                         Monad:lift_reply(
+                           Monad:par([
+                                      do([Monad || 
+                                             Monad:lift_reply(
+                                               Monad:local_acc_ref(CRef, CC(Key, Val))),
+                                             Monad:pass()
+                                         ]),
+                                      Monad:pure_return(Val)
+                                     ])),
                          NWorking <- Monad:get_ref(WRef, []),
                          Completed <- Monad:get_ref(CRef, maps:new()),
                          begin

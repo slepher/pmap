@@ -202,7 +202,7 @@ test_async_t_par(_Config) ->
     Monad = async_t:new(identity_m),
     M1 = Monad:par(
            [Monad:message(hello_message),
-            Monad:return(hello)
+            Monad:fail(hello)
            ]),
     Reply = Monad:wait(M1,
               fun({message, M}) ->
@@ -214,23 +214,23 @@ test_async_t_par(_Config) ->
                              MR:put({Acc, Reply})
                          ])
               end),
-    ?assertEqual({hello_message, {ok, hello}}, Reply).
+    ?assertEqual({hello_message, {error, hello}}, Reply).
                         
 
 test_async_t_pmap(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     Monad = async_t:new(identity_m),
-    M0 = Monad:promise(fun() -> echo_server:echo(EchoServer, hello) end),
+    M0 = Monad:promise(fun() -> echo_server:echo(EchoServer, {error, hello}) end),
     Promises = lists:duplicate(3, M0),
     M1 = Monad:pmap(Promises),
     Reply = Monad:wait(M1),
-    ?assertEqual([hello, hello, hello], Reply).
+    ?assertEqual(lists:duplicate(3, {error, hello}), Reply).
                                
 
 test_async_t_pmap_with_acc(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     Monad = async_t:new(identity_m),
-    M0 =  Monad:promise(fun() -> echo_server:echo(EchoServer, hello) end),
+    M0 =  Monad:promise(fun() -> echo_server:echo(EchoServer, {error, hello}) end),
     Promises = lists:foldl(
                  fun(N, Acc0) ->
                          MA = 
@@ -257,7 +257,7 @@ test_async_t_pmap_with_acc(Config) ->
                          ])
               end
              ),
-    ?assertEqual({maps:from_list([{1,  hello}, {2,  hello}, {3,  hello}]), [3,2,1]}, Reply).
+    ?assertEqual({maps:from_list([{1,  {error, hello}}, {2,  {error, hello}}, {3, {error, hello}}]), [3,2,1]}, Reply).
                                
 test_local_acc_ref(_Config) ->
     MR = async_r_t:new(identity_m),
