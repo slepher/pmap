@@ -19,7 +19,7 @@
 -export([lift_reply/2, lift_reply_all/2, pure_return/2, message/2, hijack/2, pass/1]).
 -export([promise/2, promise/3, then/3, pmap/2, par/2]).
 -export([wait/2, wait/3, wait/4, wait/5, wait/6]).
--export([run/5, wait_receive/4, handle_message/3, handle_info/4]).
+-export([run/5, wait_receive/4, handle_message/3, provide_message/3, handle_info/4]).
 
 
 %% Type constructors in erlang is not supported, I clould not implement type of async_t by other monad_t
@@ -183,16 +183,12 @@ pmap(Promises, Options, {?MODULE, _M} = Monad) ->
                   do([Monad ||
                          Working <- Monad:get_ref(WRef, []),
                          Monad:put_ref(WRef, [Key|Working]),
-                         Val <- Monad:lift_reply_all(Promise),
                          Monad:lift_reply(
-                           Monad:par([
-                                      do([Monad || 
-                                             Monad:lift_reply(
-                                               Monad:local_acc_ref(CRef, CC(Key, Val))),
-                                             Monad:pass()
-                                         ]),
-                                      Monad:pure_return(Val)
-                                     ])),
+                           Monad:provide_message(
+                             Promise,
+                             fun(Val) ->
+                                     Monad:local_acc_ref(CRef, CC(Key, Val))
+                             end)),
                          NWorking <- Monad:get_ref(WRef, []),
                          Completed <- Monad:get_ref(CRef, maps:new()),
                          begin
@@ -216,6 +212,18 @@ pmap(Promises, Options, {?MODULE, _M} = Monad) ->
            Monad:put_ref(CRef, Acc0),
            Monad:par(maps:values(NPromises))
        ]).
+
+provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
+    do([Monad ||
+           Val <- Monad:lift_reply_all(Promise),
+           Monad:par([
+                      do([Monad || 
+                             Monad:lift_reply(Then(Val)),
+                             Monad:pass()
+                         ]),
+                        Monad:pure_return(Val)
+                     ])
+      ]).
 
 default_cc({?MODULE, _M} = Monad) ->
     fun(Key, {message, Message}) ->
@@ -261,7 +269,22 @@ run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
     K = callback_to_k(Callback, Monad),
     CallbacksGS = state_callbacks_gs(Offset),
     Ref = make_ref(),
-    MR:exec(X(K), CallbacksGS, Ref, State).
+    NK = 
+        fun({message, _M} = Message) ->
+                K(Message);
+           (A) ->
+             do([MR ||
+                    K(A),
+                    NState <- MR:get(),
+                    case same_type_state(NState, State) of
+                        true ->
+                            MR:remove_ref(Ref);
+                        false ->
+                            MR:return(ok)
+                    end
+                ])
+        end,
+    MR:exec(X(NK), CallbacksGS, Ref, State).
 
 wait(X, {?MODULE, _M} = Monad) ->
     wait(X, infinity, Monad).
