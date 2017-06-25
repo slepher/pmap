@@ -15,7 +15,7 @@
 %% API
 -export([new/1, '>>='/3, return/2, fail/2, lift/2, lift_mr/2]).
 -export([get/1, put/2, find_ref/2, get_ref/3, put_ref/3, remove_ref/2, 
-         get_acc/1, put_acc/2, callCC/2]).
+         get_acc/1, put_acc/2, local_acc_ref/3, get_acc_ref/1, callCC/2]).
 -export([lift_reply/2, lift_reply_all/2, pure_return/2, message/2, hijack/2, pass/1]).
 -export([promise/2, promise/3, then/3, pmap/2, par/2]).
 -export([wait/2, wait/3, wait/4, wait/5, wait/6]).
@@ -80,6 +80,24 @@ put_acc(Acc, {?MODULE, M} = Monad) ->
     MR = async_r_t:new(M),
     Monad:lift_mr(MR:put_acc(Acc)).
 
+local_acc_ref(Ref, X, {?MODULE, M}) ->
+    MR = async_r_t:new(M),
+    fun(K) ->
+            do([MR ||
+                   ORef <- MR:get_acc_ref(),
+                   begin 
+                       NK = 
+                           fun(A) ->
+                                   MR:local_acc_ref(ORef, K(A))
+                           end,
+                       MR:local_acc_ref(Ref, X(NK))
+                   end
+               ])
+    end.
+
+get_acc_ref({?MODULE, M} = Monad) ->
+    MR = async_r_t:new(M),
+    Monad:lift_mr(MR:get_acc_ref()).
 
 find_ref(MRef, {?MODULE, M} = Monad) ->
     MR = async_r_t:new(M),
@@ -145,7 +163,6 @@ then(X, Then, {?MODULE, M}) ->
     Monad = real(M),
     Monad:'>>='(Monad:lift(X), Then).
 
-%% TODO: usage of Acc here is not right
 pmap(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
     NPromises = maps:from_list(lists:zip(lists:seq(1, length(Promises)), Promises)),
     do([Monad || 
@@ -153,36 +170,61 @@ pmap(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
            Monad:pure_return(maps:values(Value))
        ]);
 pmap(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
-    Ref = make_ref(),
+    pmap(Promises, #{}, Monad).
+
+pmap(Promises, Options, {?MODULE, _M} = Monad) ->
+    WRef = make_ref(),
+    CRef = make_ref(),
+    CC = maps:get(cc, Options, default_cc(Monad)),
+    Acc0 = maps:get(acc0, Options, maps:new()),
     NPromises = 
         maps:map(
           fun(Key, Promise) ->
                   do([Monad ||
-                         {Working, Completed} <- Monad:get_ref(Ref, {[], maps:new()}),
-                         Monad:put_ref(Ref, {[Key|Working], Completed}),
-                         Val <- Monad:lift_reply(Promise),
-                         {NWorking, NCompleted} <- Monad:get_ref(Ref, {[], maps:new()}),
-                         begin 
-                             NNWorking = lists:delete(Key, NWorking),
-                             NNCompleted = maps:put(Key, Val, NCompleted),
-                             Monad:par([Monad:pure_return({message, {Key, Val}}),
-                                        case NNWorking of
-                                            [] ->
-                                                do([Monad ||
-                                                       Monad:remove_ref(Ref),
-                                                       Monad:pure_return(NNCompleted)
-                                                   ]);
-                                            _ ->
-                                                do([Monad ||
-                                                       Monad:put_ref(
-                                                         Ref, {NNWorking, NNCompleted}),
-                                                       Monad:pass()
-                                                   ])
-                                        end])
+                         Working <- Monad:get_ref(WRef, []),
+                         Monad:put_ref(WRef, [Key|Working]),
+                         Val <- Monad:lift_reply_all(Promise),
+                         Monad:par([
+                                    do([Monad || 
+                                           Monad:local_acc_ref(CRef, CC(Key, Val)),
+                                           Monad:pass()
+                                       ]),
+                                    Monad:pure_return(Val)
+                                   ]),
+                         NWorking <- Monad:get_ref(WRef, []),
+                         Completed <- Monad:get_ref(CRef, maps:new()),
+                         begin
+                             case lists:delete(Key, NWorking) of
+                                 [] ->
+                                     do([Monad ||
+                                            Monad:remove_ref(WRef),
+                                            Monad:remove_ref(CRef),
+                                            Monad:pure_return(Completed)
+                                        ]);
+                                 NNWorking ->
+                                     do([Monad ||
+                                            Monad:put_ref(WRef, NNWorking),
+                                            Monad:pass()
+                                        ])
+                             end
                          end
                      ])
           end, Promises),
-    Monad:par(maps:values(NPromises)).
+    do([Monad ||
+           Monad:put_ref(CRef, Acc0),
+           Monad:par(maps:values(NPromises))
+       ]).
+
+default_cc({?MODULE, _M} = Monad) ->
+    fun(Key, {message, Message}) ->
+            Monad:pure_return({message, {Key, Message}});
+       (Key, Value) ->
+            do([Monad ||
+                   Acc <- Monad:get_acc(),
+                   Monad:put_acc(maps:put(Key, Value, Acc)),
+                   Monad:pure_return(Value)
+               ])
+    end.
 
 par(Promises, {?MODULE, M}) ->
     MR = async_r_t:new(M),
@@ -211,6 +253,7 @@ pass({?MODULE, M} = Monad) ->
     MR = async_r_t:new(M),
     Monad:hijack(MR:return(ok)).
 
+%% TODO delete ref value after final cc
 run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
     MR = async_r_t:new(M),
     K = callback_to_k(Callback, Monad),

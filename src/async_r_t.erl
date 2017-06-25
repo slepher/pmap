@@ -15,7 +15,7 @@
 %% API
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
 -export([ask/1, get/1, put/2]).
--export([get_acc_ref/1, get_acc/1, put_acc/2]).
+-export([get_acc_ref/1, local_acc_ref/3, get_acc/1, put_acc/2]).
 -export([find_ref/2, get_ref/3, put_ref/3, remove_ref/2]).
 -export([exec/5]).
 
@@ -81,6 +81,13 @@ get_acc_ref({?MODULE, M}) ->
     M3 = state_t:new(M2),
     M3:lift(M2:ask()).
 
+local_acc_ref(Ref, X, {?MODULE, M}) ->
+    M1 = reader_t:new(M),
+    M2 = reader_t:new(M1),
+    fun(S) ->
+            M2:local(fun(_) -> Ref end, X(S))
+    end.
+
 -spec get_acc(M) -> async_r_t(_R, C, _S, M, C).
 get_acc({?MODULE, _M} = Monad) ->
     do([Monad || 
@@ -92,9 +99,7 @@ get_acc({?MODULE, _M} = Monad) ->
 put_acc(Acc, {?MODULE, _M} = Monad) ->
     do([Monad || 
            Ref <- Monad:get_acc_ref(),
-           begin
-               Monad:put_ref(Ref, Acc)
-           end
+           Monad:put_ref(Ref, Acc)
        ]).
 
 find_ref(MRef, {?MODULE, _M} = Monad) ->

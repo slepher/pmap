@@ -97,7 +97,8 @@ end_per_testcase(_TestCase, _Config) ->
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [test_async_t, test_chain_async, test_chain_async_fail, test_async_t_with_message, test_async_t_with_message_handler, test_async_t_par, test_async_t_pmap, test_async_t_pmap_with_acc].
+    [test_async_t, test_chain_async, test_chain_async_fail, test_async_t_with_message, test_async_t_with_message_handler, test_async_t_par,
+     test_async_t_pmap, test_async_t_pmap_with_acc, test_local_acc_ref, test_async_t_local_acc_ref, test_cont_t_local].
 
 %% Test cases starts here.
 %%--------------------------------------------------------------------
@@ -205,6 +206,7 @@ test_async_t_par(_Config) ->
            ]),
     Reply = Monad:wait(M1,
               fun({message, M}) ->
+                      io:format("message is ~p~n", [M]),
                       MR:put_acc(M);
                  (Reply) ->
                       do([MR ||
@@ -257,3 +259,84 @@ test_async_t_pmap_with_acc(Config) ->
              ),
     ?assertEqual({maps:from_list([{1,  hello}, {2,  hello}, {3,  hello}]), [3,2,1]}, Reply).
                                
+test_local_acc_ref(_Config) ->
+    MR = async_r_t:new(identity_m),
+    Ref0 = make_ref(),
+    Ref1 = make_ref(),
+    M0 = do([MR ||
+                Ref <- MR:get_acc_ref(),
+                MR:put(Ref)
+            ]),
+    M1 = MR:local_acc_ref(Ref1, M0),
+    M2 = do([MR ||
+                R1 <- MR:local_acc_ref(Ref1, MR:get_acc_ref()),
+                R0 <- MR:get_acc_ref(),
+                MR:put({R0, R1})
+            ]),
+    ?assertEqual(Ref0, MR:exec(M0, undefined, Ref0, undefined)),
+    ?assertEqual(Ref1, MR:exec(M1, undefined, Ref0, undefined)),
+    ?assertEqual({Ref0, Ref1}, MR:exec(M2, undefined, Ref0, undefined)).
+
+test_async_t_local_acc_ref(_Config) ->
+    Monad = async_t:new(identity_m),
+    MR = async_r_t:new(identity_m),
+    Ref = make_ref(),
+    M0 = do([Monad ||
+                Ref0 <- Monad:get_acc_ref(),
+                Monad:pure_return(Ref0)
+            ]),
+    M1 = Monad:local_acc_ref(Ref, M0),
+    M2 = do([Monad ||
+                Ref0 <- M0,
+                Ref1 <- M1,
+                Ref2 <- Monad:get_acc_ref(),
+                Monad:pure_return({Ref0, Ref1, Ref2})
+            ]),
+    {{R0, R1, R2}, R3} = Monad:wait(M2, fun(X) -> 
+                                          do([MR || 
+                                                 MRRef <- MR:get_acc_ref(),
+                                                 MR:put({X, MRRef})])
+                                  end),
+    ?assertEqual(Ref, R1),
+    ?assertEqual(R0, R2),
+    ?assertEqual(R0, R3).
+
+test_cont_t_local(_Config) ->
+    MR = reader_t:new(identity_m),
+    Monad = cont_t:new(MR),
+    RefO = make_ref(),
+    Ref = make_ref(),
+    
+    M0 = do([Monad ||
+                Ref0 <- Monad:lift(MR:ask()),
+                return(Ref0)
+            ]),
+    M1 = cont_local(Ref, M0),
+    M2 = do([Monad ||
+                Ref0 <- M0,
+                Ref1 <- M1,
+                Ref2 <- Monad:lift(MR:ask()),
+                return({Ref0, Ref1, Ref2})
+            ]),
+    Reader = Monad:run(M2, fun(X) -> MR:return(X) end),
+    {R0, R1, R2}= MR:run(Reader, RefO),
+    ?assertEqual(RefO, R0),
+    ?assertEqual(RefO, R2),
+    ?assertEqual(Ref, R1).
+
+
+cont_local(L, C) ->
+    MR = reader_t:new(identity_m),
+    fun(K) ->
+            do([MR ||
+                   R <- MR:ask(),
+                   begin 
+                       NK = 
+                           fun(A) ->
+                                   MR:local(fun(_) -> R end, K(A))
+                           end,
+                       MR:local(fun(_) -> L end, C(NK))
+                   end
+               ])
+    end.
+    
