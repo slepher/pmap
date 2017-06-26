@@ -240,10 +240,10 @@ test_async_t_pmap_with_acc(Config) ->
                                     Monad:pure_return(Val)
                                 ]),
                          maps:put(N, MA, Acc0)
-                 end, maps:new(), lists:seq(1, 3)),
+                 end, maps:new(), lists:seq(1, 5)),
     M1 = do([Monad ||
                 Monad:put_acc([]),
-                Monad:map(Promises)
+                Monad:map(Promises, #{concurrency => 2})
             ]),
     MR = async_r_t:new(identity_m),
     Reply = Monad:wait(M1, 
@@ -256,7 +256,12 @@ test_async_t_pmap_with_acc(Config) ->
                          ])
               end
              ),
-    ?assertEqual({maps:from_list([{1,  {error, hello}}, {2,  {error, hello}}, {3, {error, hello}}]), [3,2,1]}, Reply).
+    ?assertEqual({maps:from_list([{1, {error, hello}},
+                                  {2, {error, hello}},
+                                  {3, {error, hello}},
+                                  {4, {error, hello}},
+                                  {5, {error, hello}}
+                                 ]), [5,4, 3,2,1]}, Reply).
                                
 test_local_acc_ref(_Config) ->
     MR = async_r_t:new(identity_m),

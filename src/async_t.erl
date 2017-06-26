@@ -17,7 +17,7 @@
 -export([get/1, put/2, find_ref/2, get_ref/3, put_ref/3, remove_ref/2, 
          get_acc/1, put_acc/2, local_acc_ref/3, get_acc_ref/1, callCC/2]).
 -export([lift_reply/2, lift_reply_all/2, pure_return/2, message/2, hijack/2, pass/1]).
--export([promise/2, promise/3, then/3, map/2, par/2]).
+-export([promise/2, promise/3, then/3, map/2, map/3, par/2]).
 -export([wait/2, wait/3, wait/4, wait/5, wait/6]).
 -export([run/5, wait_receive/4, handle_message/3, provide_message/3, handle_info/4]).
 
@@ -182,9 +182,11 @@ map(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
 
 map(Promises, Options, {?MODULE, _M} = Monad) ->
     WRef = make_ref(),
+    PRef = make_ref(),
     CRef = make_ref(),
     CC = maps:get(cc, Options, default_cc(Monad)),
     Acc0 = maps:get(acc0, Options, maps:new()),
+    Threads = maps:get(concurrency, Options, 0),
     NPromises = 
         maps:map(
           fun(Key, Promise) ->
@@ -197,29 +199,53 @@ map(Promises, Options, {?MODULE, _M} = Monad) ->
                              fun(Val) ->
                                      Monad:local_acc_ref(CRef, CC(Key, Val))
                              end)),
+                         Pending <- Monad:get_ref(PRef, []),
                          NWorking <- Monad:get_ref(WRef, []),
-                         Completed <- Monad:get_ref(CRef, maps:new()),
-                         begin
-                             case lists:delete(Key, NWorking) of
-                                 [] ->
-                                     do([Monad ||
-                                            Monad:remove_ref(WRef),
-                                            Monad:remove_ref(CRef),
-                                            Monad:pure_return(Completed)
-                                        ]);
-                                 NNWorking ->
-                                     do([Monad ||
-                                            Monad:put_ref(WRef, NNWorking),
-                                            Monad:pass()
-                                        ])
-                             end
+                         case maps:size(Pending) of
+                             0 ->
+                                 case lists:delete(Key, NWorking) of
+                                     [] ->
+                                         do([Monad ||
+                                                Completed <- Monad:get_ref(CRef, maps:new()),
+                                                Monad:remove_ref(WRef),
+                                                Monad:remove_ref(CRef),
+                                                Monad:pure_return(Completed)
+                                                ]);
+                                     NNWorking ->
+                                         do([Monad ||
+                                                Monad:put_ref(WRef, NNWorking),
+                                                Monad:pass()
+                                            ])
+                                 end;
+                             _ ->
+                                 PKey = lists:nth(1, maps:keys(Pending)), 
+                                 PPromise = maps:get(PKey, Pending, undefined),
+                                 NPending = maps:remove(PKey, Pending),
+                                 do([Monad ||
+                                        Monad:put_ref(PRef, NPending),
+                                        Monad:put_ref(
+                                          WRef, [PKey|lists:delete(Key, NWorking)]),
+                                        PPromise
+                                    ])
                          end
                      ])
           end, Promises),
+    {WPromiseKeys, PPromiseKeys} = split(Threads, maps:keys(NPromises)),
     do([Monad ||
            Monad:put_ref(CRef, Acc0),
-           Monad:par(maps:values(NPromises))
+           Monad:put_ref(PRef, maps:with(PPromiseKeys, NPromises)),
+           Monad:par(maps:values(maps:with(WPromiseKeys, NPromises)))
        ]).
+
+
+split(0, Keys) ->
+    {Keys, []};
+split(Threads, Keys) when length(Keys) =< Threads ->
+    lists:split(Threads, Keys);
+split(_Threads, Keys) ->
+    {Keys, []}.
+
+
 
 provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
     do([Monad ||
