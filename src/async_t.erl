@@ -199,7 +199,7 @@ map(Promises, Options, {?MODULE, _M} = Monad) ->
                              fun(Val) ->
                                      Monad:local_acc_ref(CRef, CC(Key, Val))
                              end)),
-                         Pending <- Monad:get_ref(PRef, []),
+                         Pending <- Monad:get_ref(PRef, maps:new()),
                          NWorking <- Monad:get_ref(WRef, []),
                          case maps:size(Pending) of
                              0 ->
@@ -244,8 +244,6 @@ split(Threads, Keys) when length(Keys) =< Threads ->
     lists:split(Threads, Keys);
 split(_Threads, Keys) ->
     {Keys, []}.
-
-
 
 provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
     do([Monad ||
