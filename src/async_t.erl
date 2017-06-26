@@ -255,7 +255,7 @@ par(Promises, {?MODULE, M}) ->
     MR = async_r_t:new(M),
     fun(K) ->
             monad:sequence(MR, lists:map(fun(Promise) -> Promise(K) end, Promises))
-    end.            
+    end.
 
 handle_message(X, MessageHandler, {?MODULE, M} = Monad) ->
     NMessageHandler = callback_to_k(MessageHandler, {?MODULE, M}),
@@ -314,9 +314,9 @@ wait(X, Callback, Timeout, {?MODULE, _M} = Monad) ->
 
 wait(X, Offset, State, Timeout, {?MODULE, M} = Monad) ->
     wait(X,
-         fun({message,__M}, S) ->
+         fun({message, _M}, S) ->
                  S;
-            (A, _State) ->
+            (A, _S) ->
                  M:return(A)
          end, Offset, State, Timeout, Monad).
 
@@ -335,10 +335,8 @@ wait(X, Callback, Offset, State, Timeout, {?MODULE, M} = Monad) ->
 wait_receive(Offset, State, Timeout, {?MODULE, M} = Monad) ->
     {CallbacksG, _CallbacksS} = state_callbacks_gs(Offset),
     Callbacks = CallbacksG(State),
-    case maps:size(Callbacks) of
-        0 -> 
-            M:return(State);
-        _ ->
+    case callback_exists(Callbacks) of
+        true ->
             receive 
                 Info ->
                     case handle_info(Info, Offset, State, Monad) of
@@ -369,9 +367,19 @@ wait_receive(Offset, State, Timeout, {?MODULE, M} = Monad) ->
                                  ]);
                          (_MRef, _Other, MS) ->
                               MS
-                      end, State, Callbacks)
-            end
+                      end, M:return(State), Callbacks)
+            end;
+        false ->
+            M:return(State)
     end.
+
+callback_exists(Callbacks) ->
+    (maps:size(Callbacks) =/= 0) and
+        (lists:any(fun(#callback{}) ->
+                           true;
+                      (_) ->
+                           false
+                   end, maps:values(Callbacks))).
                     
 handle_info(Info, Offset, State, {?MODULE, M}) ->
     MR = async_r_t:new(M),
