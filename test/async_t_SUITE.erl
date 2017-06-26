@@ -221,7 +221,7 @@ test_async_t_pmap(Config) ->
     Monad = async_t:new(identity_m),
     M0 = Monad:promise(fun() -> echo_server:echo(EchoServer, {error, hello}) end),
     Promises = lists:duplicate(3, M0),
-    M1 = Monad:pmap(Promises),
+    M1 = Monad:map(Promises),
     Reply = Monad:wait(M1),
     ?assertEqual(lists:duplicate(3, {error, hello}), Reply).
                                
@@ -243,7 +243,7 @@ test_async_t_pmap_with_acc(Config) ->
                  end, maps:new(), lists:seq(1, 3)),
     M1 = do([Monad ||
                 Monad:put_acc([]),
-                Monad:pmap(Promises)
+                Monad:map(Promises)
             ]),
     MR = async_r_t:new(identity_m),
     Reply = Monad:wait(M1, 
