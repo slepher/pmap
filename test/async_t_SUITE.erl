@@ -215,7 +215,6 @@ test_async_t_par(_Config) ->
                          ])
               end),
     ?assertEqual({hello_message, {error, hello}}, Reply).
-                        
 
 test_async_t_pmap(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),

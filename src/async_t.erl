@@ -17,7 +17,7 @@
 -export([get/1, put/2, find_ref/2, get_ref/3, put_ref/3, remove_ref/2, 
          get_acc/1, put_acc/2, local_acc_ref/3, get_acc_ref/1, callCC/2]).
 -export([lift_reply/2, lift_reply_all/2, pure_return/2, message/2, hijack/2, pass/1]).
--export([promise/2, promise/3, then/3, pmap/2, par/2]).
+-export([promise/2, promise/3, then/3, map/2, par/2]).
 -export([wait/2, wait/3, wait/4, wait/5, wait/6]).
 -export([run/5, wait_receive/4, handle_message/3, provide_message/3, handle_info/4]).
 
@@ -25,6 +25,7 @@
 %% Type constructors in erlang is not supported, I clould not implement type of async_t by other monad_t
 %% TODO: expand it
 -opaque async_t(_C, _S, _R, _M, _A) :: any().
+-record(callback, {cc, acc_ref}).
 
 %%%===================================================================
 %%% API
@@ -152,7 +153,7 @@ promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
                            AccRef <- MR:get_acc_ref(),
                            begin 
                                NK = callback_with_timeout(K, MRef, Timeout, Monad),
-                               MR:put_ref(MRef, {NK, AccRef})
+                               MR:put_ref(MRef, #callback{cc = NK, acc_ref = AccRef})
                            end
                        ]);
                 Value ->
@@ -170,16 +171,16 @@ then(X, Then, {?MODULE, M}) ->
     Monad = real(M),
     Monad:'>>='(Monad:lift(X), Then).
 
-pmap(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
+map(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
     NPromises = maps:from_list(lists:zip(lists:seq(1, length(Promises)), Promises)),
     do([Monad || 
            Value <- Monad:pmap(NPromises),
            Monad:pure_return(maps:values(Value))
        ]);
-pmap(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
-    pmap(Promises, #{}, Monad).
+map(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
+    map(Promises, #{}, Monad).
 
-pmap(Promises, Options, {?MODULE, _M} = Monad) ->
+map(Promises, Options, {?MODULE, _M} = Monad) ->
     WRef = make_ref(),
     CRef = make_ref(),
     CC = maps:get(cc, Options, default_cc(Monad)),
@@ -319,14 +320,17 @@ wait(X, Offset, State, Timeout, {?MODULE, M} = Monad) ->
                  M:return(A)
          end, Offset, State, Timeout, Monad).
 
-wait(X, Callback, Offset, State, Timeout, {?MODULE, _M} = Monad) ->
-    NState = run(X, Callback, Offset, State, Monad),
-    case same_type_state(NState, State) of
-        true ->
-            wait_receive(Offset, NState, Timeout, Monad);
-        false ->
-            NState
-    end.
+wait(X, Callback, Offset, State, Timeout, {?MODULE, M} = Monad) ->
+    MState = run(X, Callback, Offset, State, Monad),
+    do([M ||
+           NState <- MState,
+           case same_type_state(NState, State) of
+               true ->
+                   wait_receive(Offset, NState, Timeout, Monad);
+               false ->
+                   NState
+           end
+       ]).
 
 wait_receive(Offset, State, Timeout, {?MODULE, M} = Monad) ->
     {CallbacksG, _CallbacksS} = state_callbacks_gs(Offset),
@@ -352,8 +356,8 @@ wait_receive(Offset, State, Timeout, {?MODULE, M} = Monad) ->
                                ])
                     end
             after Timeout ->
-                    lists:foldl(
-                      fun(MRef, MS) ->
+                    maps:fold(
+                      fun(MRef, #callback{}, MS) ->
                               do([M || 
                                      S <- MS,
                                      case handle_info({MRef, {error, timeout}}, Offset, S, Monad) of
@@ -362,8 +366,10 @@ wait_receive(Offset, State, Timeout, {?MODULE, M} = Monad) ->
                                          NS ->
                                              NS
                                      end
-                                 ])
-                      end, State, maps:keys(Callbacks))
+                                 ]);
+                         (_MRef, _Other, MS) ->
+                              MS
+                      end, State, Callbacks)
             end
     end.
                     
@@ -439,7 +445,7 @@ info_to_a(_Info) ->
 
 handle_a(MRef, {message, _Message}, Callbacks) when is_reference(MRef) ->
     case maps:find(MRef, Callbacks) of
-        {ok, {Callback, Acc}} ->
+        {ok, #callback{cc = Callback, acc_ref = Acc}} ->
             {Callback, Acc, Callbacks};
         error ->
             error
@@ -447,7 +453,7 @@ handle_a(MRef, {message, _Message}, Callbacks) when is_reference(MRef) ->
 handle_a(MRef, _Reply, Callbacks) when is_reference(MRef) ->
     erlang:demonitor(MRef, [flush]),
     case maps:find(MRef, Callbacks) of
-        {ok, {Callback, Acc}} ->
+        {ok, #callback{cc = Callback, acc_ref = Acc}} ->
             NCallbacks = maps:remove(MRef, Callbacks),
             {Callback, Acc, NCallbacks};
         error ->
