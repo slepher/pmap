@@ -146,17 +146,24 @@ promise(MRef, {?MODULE, _M} = Monad) ->
 promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
     MR = async_r_t:new(M),
     fun(K) ->
-            MRef = Action(),
-            do([MR || 
-                   AccRef <- MR:get_acc_ref(),
-                   begin 
-                       NK = callback_with_timeout(K, MRef, Timeout, Monad),
-                       MR:put_ref(MRef, {NK, AccRef})
-                   end
-               ])
+            case Action() of
+                MRef when is_reference(MRef) ->
+                    do([MR || 
+                           AccRef <- MR:get_acc_ref(),
+                           begin 
+                               NK = callback_with_timeout(K, MRef, Timeout, Monad),
+                               MR:put_ref(MRef, {NK, AccRef})
+                           end
+                       ]);
+                Value ->
+                    MR:return(Value)
+            end
     end;
 promise(MRef, Timeout, {?MODULE, _M} = Monad) when is_reference(MRef) ->
-    Monad:promise(fun() -> MRef end, Timeout).
+    Monad:promise(fun() -> MRef end, Timeout);
+promise(Value, _Timeout, {?MODULE, _M} = Monad) ->
+    Monad:pure_return(Value).
+
 
 -spec then(async_t(C, S, R, M, A), fun((A) -> async_t(C, S, R, M, B)), M) -> async_t(C, S, R, M, B).
 then(X, Then, {?MODULE, M}) ->
