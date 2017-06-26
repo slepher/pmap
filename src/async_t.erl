@@ -217,17 +217,24 @@ provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
     do([Monad ||
            Val <- Monad:lift_reply_all(Promise),
            Monad:par([
+                      % this will only return messages and ignore all normal reply returned in then
                       do([Monad || 
                              Monad:lift_reply(Then(Val)),
                              Monad:pass()
                          ]),
-                        Monad:pure_return(Val)
+                      % this will only return normal reply and ignore messages in promise
+                      case Val of
+                          {message, _M} ->
+                              Monad:pass();
+                          _ ->
+                              Monad:pure_return(Val)
+                      end
                      ])
       ]).
 
 default_cc({?MODULE, _M} = Monad) ->
     fun(Key, {message, Message}) ->
-            Monad:pure_return({message, {Key, Message}});
+            Monad:message({Key, Message});
        (Key, Value) ->
             do([Monad ||
                    Acc <- Monad:get_acc(),
