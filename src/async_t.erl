@@ -174,7 +174,7 @@ then(X, Then, {?MODULE, M}) ->
 map(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
     NPromises = maps:from_list(lists:zip(lists:seq(1, length(Promises)), Promises)),
     do([Monad || 
-           Value <- Monad:pmap(NPromises),
+           Value <- Monad:map(NPromises),
            Monad:pure_return(maps:values(Value))
        ]);
 map(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
