@@ -219,17 +219,33 @@ test_async_t_par(_Config) ->
 test_async_t_pmap(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     Monad = async_t:new(identity_m),
-    M0 = Monad:promise(fun() -> echo_server:echo(EchoServer, {error, hello}) end),
+    MR = async_r_t:new(identity_m),
+    M0 = Monad:promise(fun() -> echo_server:echo_with_messages(EchoServer, [message], {error, hello}) end),
     Promises = lists:duplicate(3, M0),
-    M1 = Monad:map(Promises),
-    Reply = Monad:wait(M1),
-    ?assertEqual(lists:duplicate(3, {error, hello}), Reply).
+    M1 = do([Monad ||
+                Monad:put_acc([]),
+                Monad:map(Promises)
+            ]),
+    Reply = Monad:wait(M1, 
+              fun({message, X}) -> 
+                      do([MR ||
+                             Acc <- MR:get_acc(),
+                             MR:put_acc([X|Acc])
+                         ]);
+                 (X) ->
+                      do([MR ||
+                             Acc <- MR:get_acc(),
+                             MR:put({X, Acc})
+                         ])
+              end
+             ),
+    ?assertEqual({lists:duplicate(3, {error, hello}), [message, message, message]}, Reply).
                                
 
 test_async_t_pmap_with_acc(Config) ->
     EchoServer = proplists:get_value(echo_server, Config),
     Monad = async_t:new(identity_m),
-    M0 =  Monad:promise(fun() -> echo_server:echo(EchoServer, {error, hello}) end),
+    M0 =  Monad:promise(fun() -> echo_server:echo_with_messages(EchoServer,  [message], {error, hello}) end),
     Promises = lists:foldl(
                  fun(N, Acc0) ->
                          MA = 
@@ -243,12 +259,15 @@ test_async_t_pmap_with_acc(Config) ->
                  end, maps:new(), lists:seq(1, 5)),
     M1 = do([Monad ||
                 Monad:put_acc([]),
-                Monad:map(Promises, #{concurrency => 2})
+                Monad:map(Promises, #{concurrency => 0})
             ]),
     MR = async_r_t:new(identity_m),
     Reply = Monad:wait(M1, 
-              fun({message, _X}) -> 
-                      MR:return(ok);
+              fun({message, X}) -> 
+                      do([MR ||
+                             Acc <- MR:get_acc(),
+                             MR:put_acc([X|Acc])
+                         ]);
                  (X) ->
                       do([MR ||
                              Acc <- MR:get_acc(),
@@ -261,7 +280,8 @@ test_async_t_pmap_with_acc(Config) ->
                                   {3, {error, hello}},
                                   {4, {error, hello}},
                                   {5, {error, hello}}
-                                 ]), [5,4, 3,2,1]}, Reply).
+                                 ]), 
+                  [5, {5, message}, 4, {4, message}, 3, {3, message}, 2, {2, message}, 1, {1, message}]}, Reply).
                                
 test_local_acc_ref(_Config) ->
     MR = async_r_t:new(identity_m),

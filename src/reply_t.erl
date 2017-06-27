@@ -68,7 +68,7 @@ lift(X, {?MODULE, M}) ->
 lift_reply(X, {?MODULE, M}) ->
     do([M || A <- X,
              case A of
-                 {message, M} = Message ->
+                 {message, _IM} = Message ->
                      return(Message);
                  A ->
                      return({ok, A})

@@ -174,8 +174,13 @@ then(X, Then, {?MODULE, M}) ->
 map(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
     NPromises = maps:from_list(lists:zip(lists:seq(1, length(Promises)), Promises)),
     do([Monad || 
-           Value <- Monad:map(NPromises),
-           Monad:pure_return(maps:values(Value))
+           Value <- Monad:lift_reply_all(Monad:map(NPromises)),
+           case Value of
+               {message, {_Key, Message}} ->
+                   Monad:message(Message);
+               _ ->
+                   Monad:pure_return(maps:values(Value))
+           end
        ]);
 map(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
     map(Promises, #{}, Monad).
@@ -237,7 +242,6 @@ map(Promises, Options, {?MODULE, _M} = Monad) ->
            Monad:par(maps:values(maps:with(WPromiseKeys, NPromises)))
        ]).
 
-
 split(0, Keys) ->
     {Keys, []};
 split(Threads, Keys) when length(Keys) =< Threads ->
@@ -256,7 +260,7 @@ provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
                          ]),
                       % this will only return normal reply and ignore messages in promise
                       case Val of
-                          {message, _M} ->
+                          {message, _IM} ->
                               Monad:pass();
                           _ ->
                               Monad:pure_return(Val)
