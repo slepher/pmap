@@ -13,7 +13,7 @@
 -export_type([async_t/5]).
 
 %% API
--export([new/1, '>>='/3, return/2, fail/2, lift/2, lift_mr/2]).
+-export([new/1, new_mr/1, '>>='/3, return/2, fail/2, lift/2, lift_mr/2]).
 -export([get/1, put/2, find_ref/2, get_ref/3, put_ref/3, remove_ref/2, 
          get_acc/1, put_acc/2, local_acc_ref/3, get_acc_ref/1, callCC/2]).
 -export([lift_reply/2, lift_reply_all/2, pure_return/2, message/2, hijack/2, pass/1]).
@@ -35,6 +35,9 @@
 new(M) ->
     {?MODULE, M}.
 
+new_mr(M) ->
+    async_r_t:new(M).
+
 -spec '>>='(async_t(C, S, R, M, A), fun( (A) -> async_t(C, S, R, M, B) ), M) -> async_t(C, S, R, M, B).
 '>>='(X, Fun, {?MODULE, M}) ->
     Monad = real(M),
@@ -52,37 +55,37 @@ fail(X, {?MODULE, M}) ->
 
 -spec lift(monad:monadic(M, A), M) -> async_t(_C, _S, _R, M, A).
 lift(F, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:lift(F)).
 
 lift_mr(MonadR, {?MODULE, M}) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:lift(MonadR)).
 
 -spec get(M) -> async_t(S, S, _R, M, _A).
 get({?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:get()).
 
 -spec put(S, M) -> async_t(ok, S, _R, M, _A).
 put(State, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:put(State)).
 
 -spec get_acc(M) -> async_t(S, S, _R, M, _A).
 get_acc({?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:get_acc()).
 
 -spec put_acc(S, M) -> async_t(ok, S, _R, M, _A).
 put_acc(Acc, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:put_acc(Acc)).
 
 local_acc_ref(Ref, X, {?MODULE, M}) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     fun(K) ->
             do([MR ||
                    ORef <- MR:get_acc_ref(),
@@ -97,23 +100,23 @@ local_acc_ref(Ref, X, {?MODULE, M}) ->
     end.
 
 get_acc_ref({?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:get_acc_ref()).
 
 find_ref(MRef, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:find_ref(MRef)).
 
 get_ref(MRef, Default, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:get_ref(MRef, Default)).
 
 put_ref(MRef, Value, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:put_ref(MRef, Value)).
 
 remove_ref(MRef, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:lift_mr(MR:remove_ref(MRef)).
 
 lift_reply_all(F, {?MODULE, M}) ->
@@ -134,7 +137,7 @@ message(A, {?MODULE, _M} = Monad) ->
 
 -spec callCC(fun((fun( (A) -> async_t(C, S, R, M, _B) ))-> async_t(C, S, R, M, A)), M) -> async_t(C, S, R, M, A).
 callCC(F,  {?MODULE, M}) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:callCC(F)).
@@ -145,7 +148,7 @@ promise(MRef, {?MODULE, _M} = Monad) ->
 
 -spec promise(any(), integer(), M) -> async_t(_C, _S, _R, M, _A).
 promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     fun(K) ->
             case Action() of
                 MRef when is_reference(MRef) ->
@@ -280,7 +283,7 @@ default_cc({?MODULE, _M} = Monad) ->
     end.
 
 par(Promises, {?MODULE, M}) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     fun(K) ->
             monad:sequence(MR, lists:map(fun(Promise) -> Promise(K) end, Promises))
     end.
@@ -303,12 +306,12 @@ hijack(MR, {?MODULE, _M}) ->
     end.
 
 pass({?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     Monad:hijack(MR:return(ok)).
 
 %% TODO delete ref value after final cc
 run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     K = callback_to_k(Callback, Monad),
     CallbacksGS = state_callbacks_gs(Offset),
     Ref = make_ref(),
@@ -410,7 +413,7 @@ callback_exists(Callbacks) ->
                    end, maps:values(Callbacks))).
                     
 handle_info(Info, Offset, State, {?MODULE, M}) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     {CallbacksG, CallbacksS} = state_callbacks_gs(Offset),
     Callbacks = CallbacksG(State),
     case info_to_a(Info) of
@@ -435,10 +438,10 @@ handle_info(Info, Offset, State, {?MODULE, M}) ->
 %%% Internal functions
 %%%===================================================================
 real(M) ->
-    reply_t:new(cont_t:new(async_r_t:new(M))).
+    reply_t:new(cont_t:new(new_mr(M))).
 
 callback_to_k(Callback, {?MODULE, M}) when is_function(Callback, 0) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     fun(_A) ->
             case Callback() of
                 NMonadMR when is_function(NMonadMR) ->
@@ -448,7 +451,7 @@ callback_to_k(Callback, {?MODULE, M}) when is_function(Callback, 0) ->
             end
     end;
 callback_to_k(Callback, {?MODULE, M}) when is_function(Callback, 1) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     fun(A) ->
             case Callback(A) of
                 NMonadMR when is_function(NMonadMR) ->
@@ -458,7 +461,7 @@ callback_to_k(Callback, {?MODULE, M}) when is_function(Callback, 1) ->
             end
     end;
 callback_to_k(Callback, {?MODULE, M}) when is_function(Callback, 2) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     fun(A) ->
             do([MR || 
                    State <- MR:get(),
@@ -467,7 +470,7 @@ callback_to_k(Callback, {?MODULE, M}) when is_function(Callback, 2) ->
                ])
     end;
 callback_to_k(Callback, {?MODULE, M}) ->
-    MR = async_r_t:new(M),
+    MR = new_mr(M),
     MR:fail({invalid_callback, Callback}).
 
 info_to_a({message, MRef, Message}) when is_reference(MRef) ->
