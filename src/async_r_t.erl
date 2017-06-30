@@ -19,10 +19,8 @@
 -export([find_ref/2, get_ref/3, put_ref/3, remove_ref/2]).
 -export([exec/5]).
 
-
-%% Type constructors in erlang is not supported, I clould not implement type of async_t by other monad_t
-%% TODO: expand it
--opaque async_r_t(_S, _M, _A) :: any().
+-opaque async_r_t(S, M, A) :: fun((S) -> fun((reference()) -> fun((callback_gs(S)) -> monad:monadic(M, {S, A})))).
+-type callback_gs(S) :: {fun((S) -> #{reference() => Val}), fun((#{reference() => Val}, S) -> S)}.
 
 %%%===================================================f================
 %%% API
@@ -145,7 +143,7 @@ remove_ref(MRef, {?MODULE, _M} = Monad) ->
            end
        ]).
 
--spec exec(async_r_t(S, M, _A), {fun((S) -> #{}), fun((#{}, S) -> S)}, _Acc, S, M) -> monad:monadic(M, S).
+-spec exec(async_r_t(S, M, _A), callback_gs(S), _Acc, S, M) -> monad:monadic(M, S).
 exec(X, CallbacksGS, Acc, State, {?MODULE, M}) ->
     M1 = reader_t:new(M),
     M2 = reader_t:new(M1),

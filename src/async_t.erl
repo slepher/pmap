@@ -317,7 +317,6 @@ pass({?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:hijack(MR:return(ok)).
 
-%% TODO delete ref value after final cc
 -spec run(async_t(S, R, M, A), callback_or_cc(S, R, M, A), integer(), S, M) -> S.
 run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
