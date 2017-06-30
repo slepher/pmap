@@ -298,7 +298,7 @@ par(Promises, {?MODULE, M}) ->
             monad:sequence(MR, lists:map(fun(Promise) -> Promise(K) end, Promises))
     end.
 
--spec handle_message(async_t(S, R, M, A), callback_or_cc(S, R, M, A), M) -> async_t(S, M, A).
+-spec handle_message(async_t(S, R, M, A), callback_or_cc(S, R, M, A), M) -> async_t(S, R, M, A).
 handle_message(X, MessageHandler, {?MODULE, M} = Monad) ->
     NMessageHandler = callback_to_cc(MessageHandler, {?MODULE, M}),
     do([Monad ||
