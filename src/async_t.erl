@@ -10,7 +10,7 @@
 -compile({parse_transform, do}).
 -behaviour(monad_trans).
 
--export_type([async_t/3]).
+-export_type([async_t/4]).
 
 %% API
 -export([new/1, new_mr/1, '>>='/3, return/2, fail/2, lift/2, lift_mr/2]).
@@ -21,11 +21,10 @@
 -export([wait/2, wait/3, wait/4, wait/5, wait/6]).
 -export([run/5, handle_info/4, wait_receive/4]).
 
-%% Type constructors in erlang is not supported, I clould not implement type of async_t by other monad_t
-%% TODO: expand it
--opaque async_t(_S, _M, _A) :: any().
+-opaque async_t(S, R, M, A) :: 
+          fun((reply_t:reply_t(identity_m, A), async_r_t:async_r_t(S, M, R)) -> async_r_t:async_r_t(S, M, R)).
 
--type callback_or_cc(A, S, M, B) :: fun((A | {ok, A} | {error, _E} | {message, _IM}) -> async_r_t:async_r_t(S, M, B)) | 
+-type callback_or_cc(S, R, M, A) :: fun((A | {ok, A} | {error, _E} | {message, _IM}) -> async_r_t:async_r_t(S, M, R)) | 
                                     fun(() -> any()) | 
                                     fun((A | {ok, A} | {error, _E} | {message, _M}) -> any()) |
                                     fun((A | {ok, A} | {error, _E} | {message, _IM}, S) -> S).
@@ -43,54 +42,54 @@ new(M) ->
 new_mr(M) ->
     async_r_t:new(M).
 
--spec '>>='(async_t(S, M, A), fun( (A) -> async_t(S, M, B) ), M) -> async_t(S, M, B).
+-spec '>>='(async_t(S, R, M, A), fun( (A) -> async_t(S, R, M, B) ), M) -> async_t(S, R, M, B).
 '>>='(X, Fun, {?MODULE, M}) ->
     Monad = real(M),
     Monad:'>>='(X, Fun).
 
--spec return(A, M) -> async_t(_S, M, A).
+-spec return(A, M) -> async_t(_S, _R, M, A).
 return(A, {?MODULE, M}) ->
     Monad = real(M),
     Monad:return(A).
 
--spec fail(any(), M) -> async_t(_S, M, _A).
+-spec fail(any(), M) -> async_t(_S, _R, M, _A).
 fail(X, {?MODULE, M}) ->
     Monad = real(M),
     Monad:fail(X).
 
--spec lift(monad:monadic(M, A), M) -> async_t(_S, M, A).
+-spec lift(monad:monadic(M, A), M) -> async_t(_S, _R, M, A).
 lift(F, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:lift(F)).
 
--spec lift_mr(async_r_t:async_r_t(S, M, A), M) -> async_t(S, M, A).
+-spec lift_mr(async_r_t:async_r_t(S, M, A), M) -> async_t(S, _R, M, A).
 lift_mr(MonadR, {?MODULE, M}) ->
     MR = new_mr(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:lift(MonadR)).
 
--spec get(M) -> async_t(S, M, S).
+-spec get(M) -> async_t(S, _R, M, S).
 get({?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:get()).
 
--spec put(S, M) -> async_t(S, M, ok).
+-spec put(S, M) -> async_t(S, _R, M, ok).
 put(State, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:put(State)).
 
--spec get_acc(M) -> async_t(_S, M, _A).
+-spec get_acc(M) -> async_t(_S, _R, M, _A).
 get_acc({?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:get_acc()).
 
--spec put_acc(_Acc, M) -> async_t(_S, M, ok).
+-spec put_acc(_Acc, M) -> async_t(_S, _R, M, ok).
 put_acc(Acc, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:put_acc(Acc)).
 
--spec local_acc_ref(reference(), async_t(S, M, A), M) -> async_t(S, M, A).
+-spec local_acc_ref(reference(), async_t(S, R, M, A), M) -> async_t(S, R, M, A).
 local_acc_ref(Ref, X, {?MODULE, M}) ->
     MR = new_mr(M),
     fun(K) ->
@@ -105,62 +104,62 @@ local_acc_ref(Ref, X, {?MODULE, M}) ->
                    end
                ])
     end.
--spec get_acc_ref(M) -> async_t(_S, M, reference()).
+-spec get_acc_ref(M) -> async_t(_S, _R, M, reference()).
 get_acc_ref({?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:get_acc_ref()).
 
--spec find_ref(reference(), M) -> async_t(_S, M, {ok, _A} | error).
+-spec find_ref(reference(), M) -> async_t(_S, _R, M, {ok, _A} | error).
 find_ref(MRef, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:find_ref(MRef)).
 
--spec get_ref(reference(), A, M) -> async_t(_S, M, A).
+-spec get_ref(reference(), A, M) -> async_t(_S, _R, M, A).
 get_ref(MRef, Default, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:get_ref(MRef, Default)).
 
--spec put_ref(reference(), _A, M) -> async_t(_S, M, ok).
+-spec put_ref(reference(), _A, M) -> async_t(_S, _R, M, ok).
 put_ref(MRef, Value, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:put_ref(MRef, Value)).
 
--spec remove_ref(reference(), M) -> async_t(_S, M, ok).
+-spec remove_ref(reference(), M) -> async_t(_S, _R, M, ok).
 remove_ref(MRef, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:remove_ref(MRef)).
 
--spec lift_reply_all(async_t(S, M, A), M) -> async_t(S, M, reply_t:reply_t(_IM, _E, identity_m, A)).
+-spec lift_reply_all(async_t(S, R, M, A), M) -> async_t(S, R, M, reply_t:reply_t(_IM, _E, identity_m, A)).
 lift_reply_all(F, {?MODULE, M}) ->
     Monad = real(M),
     Monad:lift(F).
 
--spec lift_reply(async_t(S, M, A), M) -> async_t(S, M, A | {ok, A} | {error, _E}).
+-spec lift_reply(async_t(S, R, M, A), M) -> async_t(S, R, M, A | {ok, A} | {error, _E}).
 lift_reply(F, {?MODULE, M}) ->
     Monad = real(M),
     Monad:lift_reply(F).
 
--spec pure_return(A, M) -> async_t(_S, M, A).
+-spec pure_return(A, M) -> async_t(_S, _R, M, A).
 pure_return(X, {?MODULE, M}) ->
     Monad = real(M),
     Monad:pure_return(X).
 
--spec message(A, M) -> async_t(_S, M, A).
+-spec message(A, M) -> async_t(_S, _R, M, A).
 message(A, {?MODULE, _M} = Monad) ->
     Monad:pure_return({message, A}).
 
--spec callCC(fun((fun( (A) -> async_t(S, M, _B) ))-> async_t(S, M, A)), M) -> async_t(S, M, A).
+-spec callCC(fun((fun( (A) -> async_t(S, R, M, _B) ))-> async_t(S, R, M, A)), M) -> async_t(S, R, M, A).
 callCC(F,  {?MODULE, M}) ->
     MR = new_mr(M),
     M1 = cont_t:new(MR),
     M2 = reply_t:new(M1),
     M2:lift(M1:callCC(F)).
 
--spec promise(any(), M) -> async_t(_S, M, _A).
+-spec promise(any(), M) -> async_t(_S, _R, M, _A).
 promise(MRef, {?MODULE, _M} = Monad) ->
     promise(MRef, infinity, Monad).
 
--spec promise(any(), integer(), M) -> async_t(_S, M, _A).
+-spec promise(any(), integer(), M) -> async_t(_S, _R, M, _A).
 promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
     MR = new_mr(M),
     fun(K) ->
@@ -183,13 +182,13 @@ promise(Value, _Timeout, {?MODULE, _M} = Monad) ->
     Monad:pure_return(Value).
 
 
--spec then(async_t(S, M, A), fun((A) -> async_t( S, M, B)), M) -> async_t(S, M, B).
+-spec then(async_t(S, R, M, A), fun((A) -> async_t( S, R, M, B)), M) -> async_t(S, R, M, B).
 then(X, Then, {?MODULE, M}) ->
     Monad = real(M),
     Monad:'>>='(Monad:lift(X), Then).
 
--spec map([async_t(S, M, A)], M) -> async_t(S, M, [A]);
-         (#{Key => async_t(S, M, A)}, M) -> async_t(S, M, #{Key => A}).
+-spec map([async_t(S, R, M, A)], M) -> async_t(S, R, M, [A]);
+         (#{Key => async_t(S, R, M, A)}, M) -> async_t(S, R, M, #{Key => A}).
 map(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
     NPromises = maps:from_list(lists:zip(lists:seq(1, length(Promises)), Promises)),
     do([Monad || 
@@ -204,9 +203,9 @@ map(Promises, {?MODULE, _M} = Monad) when is_list(Promises) ->
 map(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
     map(Promises, #{}, Monad).
 
--spec map(#{Key => async_t(S, M, A)}, 
+-spec map(#{Key => async_t(S, R, M, A)}, 
           #{cc => fun((Key, A) -> async_r_t:async_r_t(S, M, _IM)), acc0 => Acc, concurrency => integer()}, M) -> 
-                 async_t(S, M, Acc).
+                 async_t(S, R, M, Acc).
 map(Promises, Options, {?MODULE, _M} = Monad) ->
     WRef = make_ref(),
     PRef = make_ref(),
@@ -266,7 +265,7 @@ map(Promises, Options, {?MODULE, _M} = Monad) ->
 
 
 %% provide extra message and return origin value
--spec provide_message(async_t(S, M, A), fun((A) -> async_t(S, M, _B)), M) -> async_t(S, M, A).
+-spec provide_message(async_t(S, R, M, A), fun((A) -> async_t(S, R, M, _B)), M) -> async_t(S, R, M, A).
 provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
     do([Monad ||
            Val <- Monad:lift_reply_all(Promise),
@@ -292,14 +291,14 @@ provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
 %% this is a dangerous function, only one should return A | {ok, A} | {error, E}
 %% others should return {message, IM} or use pass()
 %% or it will cause unexpected error
--spec par([async_t(S, M, A)], M) -> async_t(S, M, A).
+-spec par([async_t(S, R, M, A)], M) -> async_t(S, R, M, A).
 par(Promises, {?MODULE, M}) ->
     MR = new_mr(M),
     fun(K) ->
             monad:sequence(MR, lists:map(fun(Promise) -> Promise(K) end, Promises))
     end.
 
--spec handle_message(async_t(S, M, A), callback_or_cc(A, S, M, _IM), M) -> async_t(S, M, A).
+-spec handle_message(async_t(S, R, M, A), callback_or_cc(S, R, M, A), M) -> async_t(S, M, A).
 handle_message(X, MessageHandler, {?MODULE, M} = Monad) ->
     NMessageHandler = callback_to_cc(MessageHandler, {?MODULE, M}),
     do([Monad ||
@@ -312,19 +311,19 @@ handle_message(X, MessageHandler, {?MODULE, M} = Monad) ->
            end
        ]).
 
--spec hijack(async_r_t:async_r_t(S, M, A), M) -> async_t(S, M, A).
+-spec hijack(async_r_t:async_r_t(S, M, R), M) -> async_t(S, R, M, _A).
 hijack(MR, {?MODULE, _M}) ->
     fun(_K) ->
             MR
     end.
 
--spec pass(M) -> async_t(_S, M, ok).
+-spec pass(M) -> async_t(_S, ok, M, _A).
 pass({?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:hijack(MR:return(ok)).
 
 %% TODO delete ref value after final cc
--spec run(async_t(S, M, A), callback_or_cc(A, S, M, _B), integer(), S, M) -> S.
+-spec run(async_t(S, R, M, A), callback_or_cc(S, R, M, A), integer(), S, M) -> S.
 run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     K = callback_to_cc(Callback, Monad),
@@ -347,22 +346,22 @@ run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
         end,
     MR:exec(X(NK), CallbacksGS, Ref, State).
 
--spec wait(async_t(_S, M, A), M) -> A.
+-spec wait(async_t(_S, A, M, A), M) -> monad:monadic(M, A).
 wait(X, {?MODULE, _M} = Monad) ->
     wait(X, infinity, Monad).
 
--spec wait(async_t(S, M, A), callback_or_cc(A, S, M, B), M) -> B;
-          (async_t(_S, M, A), integer() | infinity, M) -> A.
+-spec wait(async_t(S, R, M, A), callback_or_cc(S, R, M, A), M) -> monad:monadic(M, R);
+          (async_t(_S, R, M, _A), integer() | infinity, M) -> monad:monadic(M, R).
 wait(X, Callback, {?MODULE, _M} = Monad) when is_function(Callback) ->
     wait(X, Callback, infinity, Monad);
 wait(X, Timeout, {?MODULE, _M} = Monad) ->
     wait(X, 2, {state, maps:new()}, Timeout, Monad).
 
--spec wait(async_t(S, M, A), callback_or_cc(A, S, M, B), integer() | infinity, M) -> B.
+-spec wait(async_t(S, R, M, A), callback_or_cc(S, R, M, A), integer() | infinity, M) -> monad:monadic(M, R).
 wait(X, Callback, Timeout, {?MODULE, _M} = Monad) ->
     wait(X, Callback, 2, {state, maps:new()}, Timeout, Monad).
 
--spec wait(async_t(S, M, A), integer(), S, integer() | infinity, M) -> A.
+-spec wait(async_t(S, A, M, A), integer(), S, integer() | infinity, M) -> monad:monadic(M, A).
 wait(X, Offset, State, Timeout, {?MODULE, M} = Monad) ->
     wait(X,
          fun({message, _M}, S) ->
@@ -371,7 +370,7 @@ wait(X, Offset, State, Timeout, {?MODULE, M} = Monad) ->
                  M:return(A)
          end, Offset, State, Timeout, Monad).
 
--spec wait(async_t(S, M, A), callback_or_cc(A, S, M, B), integer(), S, integer() | infinity, M) -> B.
+-spec wait(async_t(S, R, M, A), callback_or_cc(S, R, M, A), integer(), S, integer() | infinity, M) -> monad:monadic(M, R).
 wait(X, Callback, Offset, State, Timeout, {?MODULE, M} = Monad) ->
     MState = run(X, Callback, Offset, State, Monad),
     do([M ||
