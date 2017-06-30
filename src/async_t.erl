@@ -181,7 +181,6 @@ promise(MRef, Timeout, {?MODULE, _M} = Monad) when is_reference(MRef) ->
 promise(Value, _Timeout, {?MODULE, _M} = Monad) ->
     Monad:pure_return(Value).
 
-
 -spec then(async_t(S, R, M, A), fun((A) -> async_t( S, R, M, B)), M) -> async_t(S, R, M, B).
 then(X, Then, {?MODULE, M}) ->
     Monad = real(M),
@@ -263,7 +262,6 @@ map(Promises, Options, {?MODULE, _M} = Monad) ->
            Monad:par(maps:values(maps:with(WPromiseKeys, NPromises)))
        ]).
 
-
 %% provide extra message and return origin value
 -spec provide_message(async_t(S, R, M, A), fun((A) -> async_t(S, R, M, _B)), M) -> async_t(S, R, M, A).
 provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
@@ -284,9 +282,6 @@ provide_message(Promise, Then, {?MODULE, _M} = Monad) ->
                       end
                      ])
       ]).
-
-
-
 
 %% this is a dangerous function, only one should return A | {ok, A} | {error, E}
 %% others should return {message, IM} or use pass()
