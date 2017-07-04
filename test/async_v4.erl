@@ -73,12 +73,12 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(request1, From, State) ->
-  Monad = do([async_m_v4 || 
-              Reply1 <- promise1(),
-              promise_with_state(fun(S) -> S#state{status = request2} end),
-              Reply2 <- promise2(Reply1),
-              promise3(Reply2)
-             ]),
+    Monad = do([async_m_v4 || 
+                   Reply1 <- promise1(),
+                   promise_with_state(fun(S) -> S#state{status = request2} end),
+                   Reply2 <- promise2(Reply1),
+                   promise3(Reply2)
+               ]),
     Callback = 
         fun({ok, Reply}, #state{status = Status} = S) ->
                 gen_server:reply(From, {ok, {Status, Reply}}),
@@ -88,11 +88,7 @@ handle_call(request1, From, State) ->
                 S
         end,
     NState = run(Monad, update_callback(Callback), #state.callbacks, State),
-    {noreply, NState};
-
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+    {noreply, NState}.
 
 promise1() ->
   promise_call(echo_server, {echo, {ok, request1}}).
@@ -234,24 +230,30 @@ execute_callback(Callback, Reply, Offset, State) ->
     end.
 
 promise(Action, Timeout) ->
-  fun(Callback) ->
-       Mref = Action(),
-       wait_reply_without_state(Callback, Mref, Timeout)
-  end.
+    fun(Callback) ->
+            Mref = Action(),
+            wait_reply_without_state(Callback, Mref, Timeout)
+    end.
 
 promise_call(Process, Request) ->
     promise_call(Process, Request, infinity).
 
 promise_call(Process, Request, Timeout) ->
-  promise(fun() -> async_gen_server_call(Process, Request) end, Timeout).
+    promise(fun() -> async_gen_server_call(Process, Request) end, Timeout).
 
 promise_with_state(Fun) ->
-  fun(Callback) ->
-        fun(Offset, State) ->
-           NState = Fun(State),
-           execute_callback(Callback, {ok, ok}, Offset, NState)
-        end
-  end.
+    fun(Callback) ->
+            fun(Offset, State) ->
+                    NState = Fun(State),
+                    execute_callback(Callback, {ok, ok}, Offset, NState)
+            end
+    end.
 
 run(Promise, Callback, Offset, State) ->
-    (Promise(Callback))(Offset, State).
+    NCallback = 
+        fun(A) ->
+                fun(O, S) ->
+                        execute_callback(Callback, A, O, S)
+                end
+        end,
+    (Promise(NCallback))(Offset, State).

@@ -16,37 +16,37 @@
 %%% API
 %%%===================================================================
 '>>='(X, Fun) ->
-  M = state_t:new(reader_t:new(identity_m)),
-  M:'>>='(X, Fun).
+    M = state_t:new(reader_t:new(identity_m)),
+    M:'>>='(X, Fun).
 
 return(A) ->
-  M = state_t:new(reader_t:new(identity_m)),
-  M:return(A).
+    M = state_t:new(reader_t:new(identity_m)),
+    M:return(A).
 
 fail(R) ->
     exit(R).
 
 get() ->
-  M = state_t:new(reader_t:new(identity_m)),
-  M:get().
+    M = state_t:new(reader_t:new(identity_m)),
+    M:get().
 
 put(S) ->
-  M = state_t:new(reader_t:new(identity_m)),
-  M:put(S).
+    M = state_t:new(reader_t:new(identity_m)),
+    M:put(S).
 
 modify(S) ->
-  M = state_t:new(reader_t:new(identity_m)),
-  M:modify(S).
+    M = state_t:new(reader_t:new(identity_m)),
+    M:modify(S).
 
 ask() ->
-  R = reader_t:new(identity_m),
-  M = state_t:new(R),
-  M:lift(R:ask()).
+    R = reader_t:new(identity_m),
+    M = state_t:new(R),
+    M:lift(R:ask()).
 
 run(AsyncRM, Offset, State) ->
-  R = reader_t:new(identity_m),
-  M = state_t:new(R),
-  R:run(M:exec(AsyncRM, State), Offset).
+    R = reader_t:new(identity_m),
+    M = state_t:new(R),
+    R:run(M:exec(AsyncRM, State), Offset).
 %%--------------------------------------------------------------------
 %% @doc
 %% @spec

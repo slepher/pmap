@@ -143,6 +143,7 @@ handle_cast(_Msg, State) ->
 handle_info(Info, State) ->
     case do_handle_info(Info, #state.callbacks, State) of
         unhandled ->
+            io:format("unexpected info msg ~p~n", [Info]),
             {noreply, State};
         NState ->
             {noreply, NState}

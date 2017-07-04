@@ -72,43 +72,39 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(request1, From, State) ->
-  Callback = 
-    fun({ok, Reply}) ->
-         gen_server:reply(From, {ok, Reply}),
-         with_state();
-       ({error, Reason}) ->
-         gen_server:reply(From, {error, Reason}),
-         with_state()
-    end,
-  WithoutState = many_async_calls(Callback),
-  NState = WithoutState(#state.callbacks, State),
-  {noreply, NState};
-
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+    Callback = 
+        fun({ok, Reply}) ->
+                gen_server:reply(From, {ok, Reply}),
+                with_state();
+           ({error, Reason}) ->
+                gen_server:reply(From, {error, Reason}),
+                with_state()
+        end,
+    WithoutState = many_async_calls(Callback),
+    NState = WithoutState(#state.callbacks, State),
+    {noreply, NState}.
 
 many_async_calls(Callback) ->
-  Mref1 = async_gen_server_call(echo_server, {echo, {ok, request1}}),
-  wait_reply_without_state(
-    fun({ok, Reply}) ->
-            Mref2 = async_gen_server_call(echo_server, {echo, {ok, {Reply, then, request2}}}),
-            with_state(
-              fun(S) ->
-                      S#state{status = request2}
-              end,
-              wait_reply_without_state(
-                fun({ok, Reply2}) ->
-                        Mref3 = async_gen_server_call(echo_server, {echo, {ok, {Reply2, then, request3}}}),
-                        wait_reply_without_state(Callback, Mref3, infinity);
-                   ({error, Reason2}) ->
-                        io:format("request2 failed ~p~n", [Reason2]),
-                        with_state()
-                end, Mref2, infinity));
-       ({error, Reason1}) ->
-            io:format("request1 failed ~p~n", [Reason1]),
-            with_state(fun(S) -> S#state{status = request1_failed} end)
-    end, Mref1, infinity).
+    Mref1 = async_gen_server_call(echo_server, {echo, {ok, request1}}),
+    wait_reply_without_state(
+      fun({ok, Reply}) ->
+              Mref2 = async_gen_server_call(echo_server, {echo, {ok, {Reply, then, request2}}}),
+              with_state(
+                fun(S) ->
+                        S#state{status = request2}
+                end,
+                wait_reply_without_state(
+                  fun({ok, Reply2}) ->
+                          Mref3 = async_gen_server_call(echo_server, {echo, {ok, {Reply2, then, request3}}}),
+                          wait_reply_without_state(Callback, Mref3, infinity);
+                     ({error, Reason2}) ->
+                          io:format("request2 failed ~p~n", [Reason2]),
+                          with_state()
+                  end, Mref2, infinity));
+         ({error, Reason1}) ->
+              io:format("request1 failed ~p~n", [Reason1]),
+              with_state(fun(S) -> S#state{status = request1_failed} end)
+      end, Mref1, infinity).
 
 %%--------------------------------------------------------------------
 %% @private

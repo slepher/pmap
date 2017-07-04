@@ -73,18 +73,16 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call(request1, From, State) ->
     Callback = 
-        fun({ok, Reply}) ->
-                gen_server:reply(From, {ok, Reply});
-           ({error, Reason}) ->
-                gen_server:reply(From, {error, Reason})
+        fun({ok, Reply}, #state{status = Status} = S) ->
+                gen_server:reply(From, {ok, {Status, Reply}}),
+                S;
+           ({error, Reason}, S) ->
+                gen_server:reply(From, {error, Reason}),
+                S
         end,
     Promise = many_promise_calls(),
     NState = run(Promise, Callback, #state.callbacks, State),
-    {noreply, NState};
-
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+    {noreply, NState}.
 
 many_promise_calls() ->
   then(then(
@@ -266,4 +264,10 @@ promise_with_state(Fun) ->
   end.
 
 run(Promise, Callback, Offset, State) ->
-    (Promise(Callback))(Offset, State).
+    NCallback = 
+        fun(A) ->
+                fun(O, S) ->
+                        execute_callback(Callback, A, O, S)
+                end
+        end,
+    (Promise(NCallback))(Offset, State).

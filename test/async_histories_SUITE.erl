@@ -141,7 +141,7 @@ test_v2(_Config) ->
 test_v3(_Config) -> 
     {ok, _} = async_v3:start(),
     Reply = gen_server:call(async_v3, request1),
-    ?assertEqual({ok, {{request1, then, request2}, then, request3}}, Reply).
+    ?assertEqual({ok, {request2, {{request1, then, request2}, then, request3}}}, Reply).
 
 test_v4(_Config) -> 
     {ok, _} = async_v4:start(),
@@ -150,5 +150,7 @@ test_v4(_Config) ->
 
 test_v5(_Config) -> 
     {ok, _} = async_v5:start(),
-    Reply = gen_server:call(async_v5, request1),
-    ?assertEqual({ok, {request2, {{request1, then, request2}, then, request3}}}, Reply).
+    Reply1 = gen_server:call(async_v5, request1),
+    ?assertEqual({ok, {request2, {{request1, then, request2}, then, request3}}}, Reply1),
+    Reply2 = gen_server:call(async_v5, request2),
+    ?assertEqual({ok, {request2, {{request1, then, request2}, then, request3}}}, Reply2).
