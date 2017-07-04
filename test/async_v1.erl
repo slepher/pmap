@@ -84,29 +84,27 @@ handle_call(request0, From, State) ->
     {noreply, NState};
 
 handle_call(request1, From, State) ->
-  Callback = 
-    fun({ok, Reply}, S) ->
-         gen_server:reply(From, {ok, Reply}),
-         S;
-       ({error, Reason}, S) ->
-         gen_server:reply(From, {error, Reason}),
-         S
-    end,
+    Callback = 
+        fun({ok, Reply}, S) ->
+                gen_server:reply(From, {ok, Reply}),
+                S;
+           ({error, Reason}, S) ->
+                gen_server:reply(From, {error, Reason}),
+                S
+        end,
     NState = many_async_calls(Callback, State),
-    {noreply, NState};
-
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+    {noreply, NState}.
 
 many_async_calls(Callback, State) ->
     Mref1 = async_gen_server_call(echo_server, {echo, {ok, request1}}),
     wait_reply(
       fun({ok, Reply1}, S) ->
-              Mref2 = async_gen_server_call(echo_server, {echo, {ok, {Reply1, then, request2}}}),
+              Mref2 = async_gen_server_call(
+                        echo_server, {echo, {ok, {Reply1, then, request2}}}),
               wait_reply(
                 fun({ok, Reply2}, S2) ->
-                        Mref3 = async_gen_server_call(echo_server, {echo, {ok, {Reply2, then, request3}}}),
+                        Mref3 = async_gen_server_call(
+                                  echo_server, {echo, {ok, {Reply2, then, request3}}}),
                         wait_reply(Callback, Mref3, infinity, #state.callbacks, S2);
                    ({error, Reason2}, S2) ->
                         io:format("request2 failed ~p~n", [Reason2]),
@@ -179,24 +177,25 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 async_gen_server_call(Process, Request) ->
-  do_call(Process, '$gen_call', Request).
+    do_call(Process, '$gen_call', Request).
 
 do_call(Process, Label, Request) ->
-  Mref = erlang:monitor(process, Process),
-  erlang:send(Process, {Label, {self(), Mref}, Request}, [noconnect]),
-  Mref.
+    Mref = erlang:monitor(process, Process),
+    erlang:send(Process, {Label, {self(), Mref}, Request}, [noconnect]),
+    Mref.
 
 wait_reply(Callback, Mref, Timeout, Offset, State) when is_reference(Mref) ->
-  NCallback = callback_with_timeout(Callback, Mref, Timeout),
-  Callbacks = element(Offset, State),
-  NCallbacks = maps:put(Mref, NCallback, Callbacks),
-  setelement(Offset, State, NCallbacks);
+    NCallback = callback_with_timeout(Callback, Mref, Timeout),
+    Callbacks = element(Offset, State),
+    NCallbacks = maps:put(Mref, NCallback, Callbacks),
+    setelement(Offset, State, NCallbacks);
 wait_reply(Callback, Other, _Timeout, _Offset, State) ->
-  execute_callback(Callback, Other, State).
+    execute_callback(Callback, Other, State).
 
 callback_with_timeout(Callback, _Mref, infinity) ->
     Callback;
-callback_with_timeout(Callback, Mref, Timeout) when is_integer(Timeout), (Timeout > 0) ->
+callback_with_timeout(Callback, Mref, Timeout) 
+  when is_integer(Timeout), (Timeout > 0) ->
     Timer = erlang:send_after(Timeout, self(), {Mref, {error, timeout}}),
     fun(R, S) ->
             erlang:cancel_timer(Timer),
@@ -220,4 +219,4 @@ do_handle_info(_Info, _Offset, _State) ->
     unhandled.
 
 execute_callback(Callback, Reply, State) ->
-  Callback(Reply, State).
+    Callback(Reply, State).

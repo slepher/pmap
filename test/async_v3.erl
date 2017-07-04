@@ -88,7 +88,8 @@ many_promise_calls() ->
   then(then(
        promise1(),
        fun(Reply1) -> 
-           chain(promise_with_state(fun(S) -> S#state{status = request2} end), promise2(Reply1))
+           chain(promise_with_state(
+                   fun(S) -> S#state{status = request2} end), promise2(Reply1))
        end),
        fun(Reply2) ->
              promise3(Reply2)
@@ -188,7 +189,8 @@ wait_reply_without_state(Callback, Mref, Timeout) ->
 
 callback_with_timeout(Callback, _Mref, infinity, _Offset) ->
     Callback;
-callback_with_timeout(Callback, Mref, Timeout, Offset) when is_integer(Timeout), (Timeout > 0) ->
+callback_with_timeout(Callback, Mref, Timeout, Offset) 
+  when is_integer(Timeout), (Timeout > 0) ->
     Timer = erlang:send_after(Timeout, self(), {Mref, {error, timeout}}),
     fun(R, S) ->
           erlang:cancel_timer(Timer),
