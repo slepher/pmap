@@ -173,7 +173,7 @@ promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
                            end
                        ]);
                 Value ->
-                    MR:return(Value)
+                    MR:pure_return(Value)
             end
     end;
 promise(MRef, Timeout, {?MODULE, _M} = Monad) when is_reference(MRef) ->
@@ -203,7 +203,8 @@ map(Promises, {?MODULE, _M} = Monad) when is_map(Promises) ->
     map(Promises, #{}, Monad).
 
 -spec map(#{Key => async_t(S, R, M, A)}, 
-          #{cc => fun((Key, A) -> async_r_t:async_r_t(S, M, _IM)), acc0 => Acc, concurrency => integer()}, M) -> 
+          #{cc => fun((Key, A) -> async_r_t:async_r_t(S, M, _IM)),
+            acc0 => Acc, concurrency => integer()}, M) -> 
                  async_t(S, R, M, Acc).
 map(Promises, Options, {?MODULE, _M} = Monad) ->
     WRef = make_ref(),

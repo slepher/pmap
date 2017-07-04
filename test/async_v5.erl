@@ -4,15 +4,15 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 17 Apr 2017 by Chen Slepher <slepher@issac.local>
+%%% Created :  4 Jul 2017 by Chen Slepher <slepher@issac.local>
 %%%-------------------------------------------------------------------
--module(echo_server).
+-module(async_v5).
 
 -behaviour(gen_server).
+-compile({parse_transform, do}).
 
 %% API
--export([echo_with_messages/3, delayed_echo/3, echo/2]).
--export([start/0, start_link/0, start/1, start_link/1]).
+-export([start/0, start_link/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -20,16 +20,8 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-record(state, {callbacks = maps:new(), status}).
 
-echo_with_messages(Echo, Messages, Request) ->
-    async_gen_server:call(Echo, {echo_with_messages, Messages, Request}).
-
-delayed_echo(Echo, Timeout, Request) ->
-    async_gen_server:call(Echo, {delayed_echo, Timeout, Request}).
-
-echo(Echo, Request) ->
-    async_gen_server:call(Echo, {echo, Request}).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -41,17 +33,12 @@ echo(Echo, Request) ->
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+
 start() ->
-    gen_server:start(?MODULE, [], []).
+    gen_server:start({local, ?SERVER}, ?MODULE, [], []).
 
 start_link() ->
-    gen_server:start_link(?MODULE, [], []).
-
-start(PName) ->
-    gen_server:start({local, PName}, ?MODULE, [], []).
-
-start_link(PName) ->
-    gen_server:start_link({local, PName}, ?MODULE, [], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -86,20 +73,37 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({echo_with_messages, Messages, Request}, From, State) ->
-    lists:foreach(
-      fun(Message) ->
-              async:message(From, Message)
-      end, Messages),
-    {reply, Request, State};
-handle_call({delayed_echo, Timeout, Request}, From, State) ->
-    erlang:send_after(Timeout, self(), {Request, From}),
-    {noreply, State};
-handle_call({echo, Request}, _From, State) ->
-    Reply = Request,
-    {reply, Reply, State};
-handle_call(Request, _From, State) ->
-    {reply, {error, {invalid_request, Request}}, State}.
+handle_call(request1, From, State) ->
+  Monad = do([async_m_v5 || 
+              Reply1 <- promise1(),
+              async_m_v5:modify(fun(S) -> S#state{status = request2} end),
+              Reply2 <- promise2(Reply1),
+              promise3(Reply2)
+             ]),
+    Callback = 
+        fun({ok, Reply}, #state{status = Status} = S) ->
+                gen_server:reply(From, {ok, {Status, Reply}}),
+                S;
+           ({error, Reason}, S) ->
+                gen_server:reply(From, {error, Reason}),
+                S
+        end,
+    CC = async_m_v5:callback_to_cc(Callback),
+    NState = async_m_v5:run(Monad, CC, #state.callbacks, State),
+    {noreply, NState};
+
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+promise1() ->
+    async_m_v5:promise_call(echo_server, {echo, {ok, request1}}).
+
+promise2(Value1) ->
+    async_m_v5:promise_call(echo_server, {echo, {ok, {Value1, then, request2}}}).
+
+promise3(Value2) ->
+    async_m_v5:promise_call(echo_server, {echo, {ok, {Value2, then, request3}}}).
 
 
 %%--------------------------------------------------------------------
@@ -125,11 +129,14 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({Request, From}, State) ->
-    gen_server:reply(From, Request),
-    {noreply, State};
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info(Info, State) ->
+    case async_m_v5:handle_info(Info, #state.callbacks, State) of
+        unhandled ->
+            io:format("unexpected info msg ~p~n", [Info]),
+            {noreply, State};
+        NState ->
+            {noreply, NState}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
