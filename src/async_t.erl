@@ -14,8 +14,8 @@
 
 %% API
 -export([new/1, new_mr/1, '>>='/3, return/2, fail/2, lift/2, lift_mr/2]).
--export([get/1, put/2, find_ref/2, get_ref/3, put_ref/3, remove_ref/2, 
-         get_acc/1, put_acc/2, local_acc_ref/3, get_acc_ref/1, callCC/2]).
+-export([get_state/1, put_state/2, modify_state/2, find_ref/2, get_ref/3, put_ref/3, remove_ref/2, 
+         get_local/1, put_local/2, modify_local/2, local_ref/3, get_local_ref/1, callCC/2]).
 -export([lift_reply/2, lift_reply_all/2, pure_return/2, message/2, hijack/2, pass/1, handle_message/3, provide_message/3]).
 -export([promise/2, promise/3, then/3, map/2, map/3, par/2]).
 -export([wait/2, wait/3, wait/4, wait/5, wait/6]).
@@ -69,45 +69,55 @@ lift_mr(MonadR, {?MODULE, M}) ->
     M2 = reply_t:new(M1),
     M2:lift(M1:lift(MonadR)).
 
--spec get(M) -> async_t(S, _R, M, S).
-get({?MODULE, M} = Monad) ->
+-spec get_state(M) -> async_t(S, _R, M, S).
+get_state({?MODULE, M} = Monad) ->
     MR = new_mr(M),
-    Monad:lift_mr(MR:get()).
+    Monad:lift_mr(MR:get_state()).
 
--spec put(S, M) -> async_t(S, _R, M, ok).
-put(State, {?MODULE, M} = Monad) ->
+-spec put_state(S, M) -> async_t(S, _R, M, ok).
+put_state(State, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
-    Monad:lift_mr(MR:put(State)).
+    Monad:lift_mr(MR:put_state(State)).
 
--spec get_acc(M) -> async_t(_S, _R, M, _A).
-get_acc({?MODULE, M} = Monad) ->
+-spec modify_state(S, M) -> async_t(S, _R, M, ok).
+modify_state(Fun, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
-    Monad:lift_mr(MR:get_acc()).
+    Monad:lift_mr(MR:modify_state(Fun)).
 
--spec put_acc(_Acc, M) -> async_t(_S, _R, M, ok).
-put_acc(Acc, {?MODULE, M} = Monad) ->
+-spec get_local(M) -> async_t(_S, _R, M, _Local).
+get_local({?MODULE, M} = Monad) ->
     MR = new_mr(M),
-    Monad:lift_mr(MR:put_acc(Acc)).
+    Monad:lift_mr(MR:get_local()).
 
--spec local_acc_ref(reference(), async_t(S, R, M, A), M) -> async_t(S, R, M, A).
-local_acc_ref(Ref, X, {?MODULE, M}) ->
+-spec put_local(_Local, M) -> async_t(_S, _R, M, ok).
+put_local(Local, {?MODULE, M} = Monad) ->
+    MR = new_mr(M),
+    Monad:lift_mr(MR:put_local(Local)).
+
+-spec modify_local(fun((Local) -> Local), M) -> async_t(_S, _R, M, ok).
+modify_local(Fun, {?MODULE, M} = Monad) ->
+    MR = new_mr(M),
+    Monad:lift_mr(MR:modify_local(Fun)).
+
+-spec local_ref(reference(), async_t(S, R, M, A), M) -> async_t(S, R, M, A).
+local_ref(Ref, X, {?MODULE, M}) ->
     MR = new_mr(M),
     fun(K) ->
             do([MR ||
-                   ORef <- MR:get_acc_ref(),
+                   ORef <- MR:get_local_ref(),
                    begin 
                        NK = 
                            fun(A) ->
-                                   MR:local_acc_ref(ORef, K(A))
+                                   MR:local_ref(ORef, K(A))
                            end,
-                       MR:local_acc_ref(Ref, X(NK))
+                       MR:local_ref(Ref, X(NK))
                    end
                ])
     end.
--spec get_acc_ref(M) -> async_t(_S, _R, M, reference()).
-get_acc_ref({?MODULE, M} = Monad) ->
+-spec get_local_ref(M) -> async_t(_S, _R, M, reference()).
+get_local_ref({?MODULE, M} = Monad) ->
     MR = new_mr(M),
-    Monad:lift_mr(MR:get_acc_ref()).
+    Monad:lift_mr(MR:get_local_ref()).
 
 -spec find_ref(reference(), M) -> async_t(_S, _R, M, {ok, _A} | error).
 find_ref(MRef, {?MODULE, M} = Monad) ->
@@ -166,7 +176,7 @@ promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
             case Action() of
                 MRef when is_reference(MRef) ->
                     do([MR || 
-                           AccRef <- MR:get_acc_ref(),
+                           AccRef <- MR:get_local_ref(),
                            begin 
                                NK = callback_with_timeout(K, MRef, Timeout, Monad),
                                MR:put_ref(MRef, #callback{cc = NK, acc_ref = AccRef})
@@ -223,7 +233,7 @@ map(Promises, Options, {?MODULE, _M} = Monad) ->
                            Monad:provide_message(
                              Promise,
                              fun(Val) ->
-                                     Monad:local_acc_ref(CRef, CC(Key, Val))
+                                     Monad:local_ref(CRef, CC(Key, Val))
                              end)),
                          Pending <- Monad:get_ref(PRef, maps:new()),
                          NWorking <- Monad:get_ref(WRef, []),
@@ -330,7 +340,7 @@ run(X, Callback, Offset, State, {?MODULE, M} = Monad) ->
            (A) ->
              do([MR ||
                     K(A),
-                    NState <- MR:get(),
+                    NState <- MR:get_state(),
                     case same_type_state(NState, State) of
                         true ->
                             MR:remove_ref(Ref);
@@ -461,8 +471,8 @@ default_cc({?MODULE, _M} = Monad) ->
             Monad:message({Key, Message});
        (Key, Value) ->
             do([Monad ||
-                   Acc <- Monad:get_acc(),
-                   Monad:put_acc(maps:put(Key, Value, Acc)),
+                   Acc <- Monad:get_local(),
+                   Monad:put_local(maps:put(Key, Value, Acc)),
                    Monad:pure_return(Value)
                ])
     end.
@@ -491,9 +501,9 @@ callback_to_cc(Callback, {?MODULE, M}) when is_function(Callback, 2) ->
     MR = new_mr(M),
     fun(A) ->
             do([MR || 
-                   State <- MR:get(),
+                   State <- MR:get_state(),
                    NState <- MR:lift(Callback(A, State)),
-                   MR:put(NState)
+                   MR:put_state(NState)
                ])
     end;
 callback_to_cc(Callback, {?MODULE, M}) ->

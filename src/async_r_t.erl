@@ -6,6 +6,7 @@
 %%% @end
 %%% Created :  9 Jun 2017 by Chen Slepher <slepher@issac.local>
 %%%-------------------------------------------------------------------
+
 -module(async_r_t).
 -compile({parse_transform, do}).
 -behaviour(monad_trans).
@@ -14,8 +15,8 @@
 
 %% API
 -export([new/1, '>>='/3, return/2, fail/2, lift/2]).
--export([get/1, put/2]).
--export([get_acc_ref/1, local_acc_ref/3, get_acc/1, put_acc/2]).
+-export([get_state/1, put_state/2, modify_state/2]).
+-export([get_local_ref/1, local_ref/3, get_local/1, put_local/2, modify_local/2]).
 -export([find_ref/2, get_ref/3, put_ref/3, remove_ref/2]).
 -export([exec/5]).
 
@@ -52,49 +53,61 @@ lift(F, {?MODULE, M}) ->
     M3 = state_t:new(M2),
     M3:lift(M2:lift(M1:lift(F))).
 
--spec get(M) -> async_r_t(S,  M, S).
-get({?MODULE, M}) ->
+-spec get_state(M) -> async_r_t(S,  M, S).
+get_state({?MODULE, M}) ->
     M1 = reader_t:new(M),
     M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
     M3:get().
 
--spec put(S, M) -> async_r_t(S, M, ok).
-put(State, {?MODULE, M}) ->
+-spec put_state(S, M) -> async_r_t(S, M, ok).
+put_state(State, {?MODULE, M}) ->
     M1 = reader_t:new(M),
     M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
     M3:put(State).
 
--spec get_acc_ref(M) -> async_r_t(_S, M, reference()).
-get_acc_ref({?MODULE, M}) ->
+modify_state(Fun, {?MODULE, M}) ->
+    M1 = reader_t:new(M),
+    M2 = reader_t:new(M1),
+    M3 = state_t:new(M2),
+    M3:modify(Fun).
+
+-spec get_local_ref(M) -> async_r_t(_S, M, reference()).
+get_local_ref({?MODULE, M}) ->
     M1 = reader_t:new(M),
     M2 = reader_t:new(M1),
     M3 = state_t:new(M2),
     M3:lift(M2:ask()).
 
--spec local_acc_ref(reference(), async_r_t(S, M, A), M) -> async_r_t(S, M, A).
-local_acc_ref(Ref, X, {?MODULE, M}) ->
+-spec local_ref(reference(), async_r_t(S, M, A), M) -> async_r_t(S, M, A).
+local_ref(Ref, X, {?MODULE, M}) ->
     M1 = reader_t:new(M),
     M2 = reader_t:new(M1),
     fun(S) ->
             M2:local(fun(_) -> Ref end, X(S))
     end.
 
--spec get_acc(M) -> async_r_t(_S, M, _C).
-get_acc({?MODULE, _M} = Monad) ->
+-spec get_local(M) -> async_r_t(_S, M, _C).
+get_local({?MODULE, _M} = Monad) ->
     do([Monad || 
-           Ref <- Monad:get_acc_ref(),
+           Ref <- Monad:get_local_ref(),
            Monad:get_ref(Ref, undefined)
        ]).
 
--spec put_acc(_C, M) -> async_r_t(_S, M, ok).
-put_acc(Acc, {?MODULE, _M} = Monad) ->
+-spec put_local(_C, M) -> async_r_t(_S, M, ok).
+put_local(Acc, {?MODULE, _M} = Monad) ->
     do([Monad || 
-           Ref <- Monad:get_acc_ref(),
+           Ref <- Monad:get_local_ref(),
            Monad:put_ref(Ref, Acc)
        ]).
 
+modify_local(Fun, {?MODULE, _M} = Monad) ->
+    do([Monad ||
+           Local <- Monad:get_local(),
+           Monad:put_local(Fun(Local))
+       ]).
+    
 -spec find_ref(reference(), M) -> async_r_t(_S, M, {ok, _A} | error).
 find_ref(MRef, {?MODULE, _M} = Monad) ->
     do([Monad ||
@@ -110,7 +123,7 @@ find_ref(MRef, {?MODULE, _M} = Monad) ->
 get_ref(MRef, Default, {?MODULE, _M} = Monad) ->
     do([Monad ||
            {CallbacksGetter, _CallbacksSetter} <- ask(Monad),
-           State <- Monad:get(),
+           State <- Monad:get_state(),
            begin
                Callbacks = CallbacksGetter(State),
                return(maps:get(MRef, Callbacks, Default))
@@ -121,26 +134,24 @@ get_ref(MRef, Default, {?MODULE, _M} = Monad) ->
 put_ref(MRef, Data, {?MODULE, _M} = Monad) ->
     do([Monad ||
            {CallbacksGetter, CallbacksSetter} <- ask(Monad),
-           State <- Monad:get(),
-           begin
-               Callbacks = CallbacksGetter(State),
-               NCallbacks = maps:put(MRef, Data, Callbacks),
-               NState = CallbacksSetter(NCallbacks, State),
-               Monad:put(NState)
-           end
+           Monad:modify_state(
+             fun(State) ->
+                     Callbacks = CallbacksGetter(State),
+                     NCallbacks = maps:put(MRef, Data, Callbacks),
+                     CallbacksSetter(NCallbacks, State)
+             end)
        ]).
 
 -spec remove_ref(reference(), M) -> async_r_t(_S, M, ok).
 remove_ref(MRef, {?MODULE, _M} = Monad) ->
     do([Monad ||
            {CallbacksGetter, CallbacksSetter} <- ask(Monad),
-           State <- Monad:get(),
-           begin
-               Callbacks = CallbacksGetter(State),
-               NCallbacks = maps:remove(MRef, Callbacks),
-               NState = CallbacksSetter(NCallbacks, State),
-               Monad:put(NState)
-           end
+           Monad:modify_state(
+             fun(State) ->
+                     Callbacks = CallbacksGetter(State),
+                     NCallbacks = maps:remove(MRef, Callbacks),
+                     CallbacksSetter(NCallbacks, State)
+           end)
        ]).
 
 -spec exec(async_r_t(S, M, _A), callback_gs(S), _Acc, S, M) -> monad:monadic(M, S).

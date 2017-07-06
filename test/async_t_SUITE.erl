@@ -206,12 +206,11 @@ test_async_t_par(_Config) ->
            ]),
     Reply = Monad:wait(M1,
               fun({message, M}) ->
-                      io:format("message is ~p~n", [M]),
-                      MR:put_acc(M);
+                      MR:put_local(M);
                  (Reply) ->
                       do([MR ||
-                             Acc <- MR:get_acc(),
-                             MR:put({Acc, Reply})
+                             Acc <- MR:get_local(),
+                             MR:put_state({Acc, Reply})
                          ])
               end),
     ?assertEqual({hello_message, {error, hello}}, Reply).
@@ -223,19 +222,19 @@ test_async_t_pmap(Config) ->
     M0 = Monad:promise(fun() -> echo_server:echo_with_messages(EchoServer, [message], {error, hello}) end),
     Promises = lists:duplicate(3, M0),
     M1 = do([Monad ||
-                Monad:put_acc([]),
+                Monad:put_local([]),
                 Monad:map(Promises)
             ]),
     Reply = Monad:wait(M1, 
               fun({message, X}) -> 
                       do([MR ||
-                             Acc <- MR:get_acc(),
-                             MR:put_acc([X|Acc])
+                             Acc <- MR:get_local(),
+                             MR:put_local([X|Acc])
                          ]);
                  (X) ->
                       do([MR ||
-                             Acc <- MR:get_acc(),
-                             MR:put({X, Acc})
+                             Acc <- MR:get_local(),
+                             MR:put_state({X, Acc})
                          ])
               end
              ),
@@ -251,27 +250,27 @@ test_async_t_pmap_with_acc(Config) ->
                          MA = 
                              do([Monad || 
                                     Val <- Monad:lift_reply(M0),
-                                    Acc <- Monad:get_acc(),
-                                    Monad:put_acc([N|Acc]),
+                                    Acc <- Monad:get_local(),
+                                    Monad:put_local([N|Acc]),
                                     Monad:pure_return(Val)
                                 ]),
                          maps:put(N, MA, Acc0)
                  end, maps:new(), lists:seq(1, 5)),
     M1 = do([Monad ||
-                Monad:put_acc([]),
+                Monad:put_local([]),
                 Monad:map(Promises, #{concurrency => 2})
             ]),
     MR = async_t:new_mr(identity_m),
     Reply = Monad:wait(M1, 
               fun({message, X}) -> 
                       do([MR ||
-                             Acc <- MR:get_acc(),
-                             MR:put_acc([X|Acc])
+                             Acc <- MR:get_local(),
+                             MR:put_local([X|Acc])
                          ]);
                  (X) ->
                       do([MR ||
-                             Acc <- MR:get_acc(),
-                             MR:put({X, Acc})
+                             Acc <- MR:get_local(),
+                             MR:put_state({X, Acc})
                          ])
               end
              ),
@@ -288,14 +287,14 @@ test_local_acc_ref(_Config) ->
     Ref0 = make_ref(),
     Ref1 = make_ref(),
     M0 = do([MR ||
-                Ref <- MR:get_acc_ref(),
-                MR:put(Ref)
+                Ref <- MR:get_local_ref(),
+                MR:put_state(Ref)
             ]),
-    M1 = MR:local_acc_ref(Ref1, M0),
+    M1 = MR:local_ref(Ref1, M0),
     M2 = do([MR ||
-                R1 <- MR:local_acc_ref(Ref1, MR:get_acc_ref()),
-                R0 <- MR:get_acc_ref(),
-                MR:put({R0, R1})
+                R1 <- MR:local_ref(Ref1, MR:get_local_ref()),
+                R0 <- MR:get_local_ref(),
+                MR:put_state({R0, R1})
             ]),
     ?assertEqual(Ref0, MR:exec(M0, undefined, Ref0, undefined)),
     ?assertEqual(Ref1, MR:exec(M1, undefined, Ref0, undefined)),
@@ -306,20 +305,20 @@ test_async_t_local_acc_ref(_Config) ->
     MR = async_t:new_mr(identity_m),
     Ref = make_ref(),
     M0 = do([Monad ||
-                Ref0 <- Monad:get_acc_ref(),
+                Ref0 <- Monad:get_local_ref(),
                 Monad:pure_return(Ref0)
             ]),
-    M1 = Monad:local_acc_ref(Ref, M0),
+    M1 = Monad:local_ref(Ref, M0),
     M2 = do([Monad ||
                 Ref0 <- M0,
                 Ref1 <- M1,
-                Ref2 <- Monad:get_acc_ref(),
+                Ref2 <- Monad:get_local_ref(),
                 Monad:pure_return({Ref0, Ref1, Ref2})
             ]),
     {{R0, R1, R2}, R3} = Monad:wait(M2, fun(X) -> 
                                           do([MR || 
-                                                 MRRef <- MR:get_acc_ref(),
-                                                 MR:put({X, MRRef})])
+                                                 MRRef <- MR:get_local_ref(),
+                                                 MR:put_state({X, MRRef})])
                                   end),
     ?assertEqual(Ref, R1),
     ?assertEqual(R0, R2),
