@@ -22,7 +22,7 @@
 -export([run/5, handle_info/4, wait_receive/4]).
 
 -opaque async_t(S, R, M, A) :: 
-          fun((reply_t:reply_t(identity_m, A), async_r_t:async_r_t(S, M, R)) -> async_r_t:async_r_t(S, M, R)).
+          fun((fun((reply_t:reply_t(identity_m, A)) -> async_r_t:async_r_t(S, M, R))) -> async_r_t:async_r_t(S, M, R)).
 
 -type callback_or_cc(S, R, M, A) :: fun((A | {ok, A} | {error, _E} | {message, _IM}) -> async_r_t:async_r_t(S, M, R)) | 
                                     fun(() -> any()) | 
@@ -139,7 +139,7 @@ remove_ref(MRef, {?MODULE, M} = Monad) ->
     MR = new_mr(M),
     Monad:lift_mr(MR:remove_ref(MRef)).
 
--spec lift_reply_all(async_t(S, R, M, A), M) -> async_t(S, R, M, reply_t:reply_t(_IM, _E, identity_m, A)).
+-spec lift_reply_all(async_t(S, R, M, A), M) -> async_t(S, R, M, reply_t:reply_t(identity_m, A)).
 lift_reply_all(F, {?MODULE, M}) ->
     Monad = real(M),
     Monad:lift(F).
@@ -169,7 +169,8 @@ callCC(F,  {?MODULE, M}) ->
 promise(MRef, {?MODULE, _M} = Monad) ->
     promise(MRef, infinity, Monad).
 
--spec promise(any(), integer(), M) -> async_t(_S, _R, M, _A).
+-spec promise(any(), integer(), M) -> async_t(_S, _R, M, _A);
+             (any(), infinity, M) -> async_t(_S, _R, M, _A).
 promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
     MR = new_mr(M),
     fun(K) ->
