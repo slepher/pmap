@@ -184,7 +184,7 @@ promise(Action, Timeout, {?MODULE, M} = Monad) when is_function(Action, 0)->
                            end
                        ]);
                 Value ->
-                    MR:pure_return(Value)
+                    K(Value)
             end
     end;
 promise(MRef, Timeout, {?MODULE, _M} = Monad) when is_reference(MRef) ->

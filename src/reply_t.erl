@@ -19,6 +19,8 @@
 
 -export_type([reply_t/2]).
 
+-include_lib("erlando/include/parameterised_module.hrl").
+
 -behaviour(monad_trans).
 -export([new/1, '>>='/3, return/2, fail/2, run/2, pure_return/2, lift/2, lift_reply/2]).
 
@@ -44,8 +46,8 @@ new(M) ->
 
 
 -spec return(A, M) -> reply_t(M, A).
-return(ok, {?MODULE, M}) -> M:return(ok);
-return(X , {?MODULE, M}) -> M:return({ok, X}).
+return(ok, {?MODULE, M}) -> ?APPLY(M, return, [ok]);
+return(X , {?MODULE, M}) -> ?APPLY(M, return, [{ok, X}]).
 
 
 -spec fail(any(), M) -> reply_t(M, _A).
