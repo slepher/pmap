@@ -13,4 +13,6 @@ A library includes
 * async monad transformer which is async_t
 
   * type AsyncT s r m a = ReplyT Message Error (ContT r (AsyncRT s m)) a
+  
+async_t and async_m has been moved to [async](https://www.github.com/slepher/async)
 
