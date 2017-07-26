@@ -104,7 +104,7 @@ start_link(Name) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{callbacks = maps:new()}}.
+    {ok, #state{callbacks = orddict:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -138,12 +138,6 @@ handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, From, State) 
 handle_call(progress, _From, #state{completed = Completed, working = Working} = State) ->
     {reply, {ok, {Completed, Working}}, State};
 
-handle_call(state, _From, #state{} = State) ->
-    {reply, State, State};
-
-handle_call(callbacks, _From, #state{callbacks = Callbacks} = State) ->
-    {reply, Callbacks, State};
-                                   
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -174,6 +168,14 @@ handle_cast(Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({callbacks_info, Where}, #state{callbacks = Callbacks} = State) ->
+    lists:foreach(
+      fun({_K, {_T, F, _R}}) ->
+              Where ! F,
+              ok
+      end, Callbacks),
+    {noreply, State};
+                             
 handle_info(Info, State) ->
     case async_m:handle_info(Info, #state.callbacks, State) of
         unhandled ->
