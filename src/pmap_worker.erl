@@ -140,6 +140,9 @@ handle_call(progress, _From, #state{completed = Completed, working = Working} = 
 
 handle_call(state, _From, #state{} = State) ->
     {reply, State, State};
+
+handle_call(callbacks, _From, #state{callbacks = Callbacks} = State) ->
+    {reply, Callbacks, State};
                                    
 handle_call(_Request, _From, State) ->
     Reply = ok,
