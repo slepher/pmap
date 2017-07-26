@@ -104,7 +104,7 @@ start_link(Name) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{callbacks = dict:new()}}.
+    {ok, #state{callbacks = maps:new()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -137,6 +137,9 @@ handle_call({task, TaskHandler, ReplyHandler, Acc0, Items, Limit}, From, State) 
 
 handle_call(progress, _From, #state{completed = Completed, working = Working} = State) ->
     {reply, {ok, {Completed, Working}}, State};
+
+handle_call(state, _From, #state{} = State) ->
+    {reply, State, State};
                                    
 handle_call(_Request, _From, State) ->
     Reply = ok,
