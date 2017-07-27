@@ -18,9 +18,13 @@
 start() ->
     pmap:start(),
     {ok, Server} = echo_server:start(),
+    %% start 200 async task each sleep 1 second and return N
+    %% 10 task is running at same time
+    %% it is expected to finish in 20 seconds
     _R = pmap:async_task(
-           fun(N) -> echo_server:delayed_echo(
-                       Server, 1000, N) end, lists:seq(1, 200), 10),
+           fun(N) -> 
+                   echo_server:delayed_echo(Server, 1000, N) 
+           end, lists:seq(1, 200), 10),
     [{_, Pid, _, _}] = supervisor:which_children(pmap_worker_sup),
     OSPid = os:getpid(),
     io:format("pmap_worker pid is ~p, self is ~p, system pid is ~s~n", [Pid, self(), OSPid]),

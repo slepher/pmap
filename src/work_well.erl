@@ -19,10 +19,13 @@ start() ->
     Start = os:timestamp(),
     pmap:start(),
     {ok, Server} = echo_server:start(),
+    %% start 200 async task each sleep 1 second,
+    %% 10 task is running at same time
+    %% is is expected finished in 20 seconds
     pmap:task(fun(N) -> echo_server:delayed_echo(Server, 1000, N) end, lists:seq(1, 200), 10),
     End = os:timestamp(),
     Diff = timer:now_diff(End, Start) div 1000000,
-    io:format("diff is ~p~n", [Diff]),
+    io:format("running cost ~p seconds ~n", [Diff]),
     init:stop().
 
 
