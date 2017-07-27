@@ -1,7 +1,5 @@
-`
-./rebar get-deps
-./rebar compile
-`
+`./rebar get-deps`
+`./rebar compile`
 
 this works well
 
