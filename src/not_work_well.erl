@@ -22,9 +22,10 @@ start() ->
            fun(N) -> echo_server:delayed_echo(
                        Server, 1000, N) end, lists:seq(1, 200), 10),
     [{_, Pid, _, _}] = supervisor:which_children(pmap_worker_sup),
-    io:format("pmap_worker pid is ~p, self is ~p ~n", [Pid, self()]),
+    OSPid = os:getpid(),
+    io:format("pmap_worker pid is ~p, self is ~p, system pid is ~s~n", [Pid, self(), OSPid]),
     timer:sleep(5000),
-    io:format("sleep end, expect to finish "),
+    io:format("sleep end, expect to finish~n"),
     Pid ! {callbacks_info, self()},
     wait_receive(),
     init:stop().
@@ -32,7 +33,7 @@ start() ->
 
 wait_receive() ->
     receive 
-        M ->
+        _M ->
             wait_receive()
     after 100 ->
             ok
