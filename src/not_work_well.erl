@@ -24,7 +24,7 @@ start() ->
     [{_, Pid, _, _}] = supervisor:which_children(pmap_worker_sup),
     io:format("pmap_worker pid is ~p, self is ~p ~n", [Pid, self()]),
     timer:sleep(5000),
-    io:format("sleep end"),
+    io:format("sleep end, expect to finish "),
     Pid ! {callbacks_info, self()},
     wait_receive(),
     init:stop().
@@ -33,7 +33,6 @@ start() ->
 wait_receive() ->
     receive 
         M ->
-            io:format("get ~p~n", [M]),
             wait_receive()
     after 100 ->
             ok
