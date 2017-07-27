@@ -1,18 +1,12 @@
-A library includes
+`
+./rebar get-deps
+./rebar compile
+`
 
-* parallel library which is pmap
+this works well
 
-* async monad based on erlando which is async_m
+`sh test/work_well.sh`
 
-* pmap and async_m will be rewritten by async_t
+this hangs
 
-* async cc result monad transformer which is async_r_t
-
-  * type AsyncRT s m a = StateT s (ReaderT Reference (ReaderT CallbacksGS m)) a
-  
-* async monad transformer which is async_t
-
-  * type AsyncT s r m a = ReplyT Message Error (ContT r (AsyncRT s m)) a
-  
-async_t and async_m has been moved to [async](https://www.github.com/slepher/async)
-
+`sh test/not_work_well.sh`
