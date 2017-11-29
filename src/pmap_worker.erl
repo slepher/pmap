@@ -263,7 +263,7 @@ add_task(Item, TaskHandler, ReplyHandler, From, State) ->
                 async_m:promise(MRef);
             MRef when is_reference(MRef) ->
                 async_m:promise(MRef);
-            M when is_function(M) ->
+            {asnc_, _} = M ->
                 M;
             Other ->
                 async_m:pure_return(Other)
