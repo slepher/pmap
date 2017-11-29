@@ -50,9 +50,13 @@ message({PId, MRef}, Message) ->
 
 promise_action(Action, Timeout) ->
     fun(Callback, StoreCallback, State) ->
-            MRef = Action(),
-            NCallback = async_m:callback_with_timeout(MRef, Callback, Timeout),
-            StoreCallback(MRef, NCallback, State)
+            case Action() of
+                MRef when is_refecence(MRef) ->
+                    NCallback = async_m:callback_with_timeout(MRef, Callback, Timeout),
+                    StoreCallback(MRef, NCallback, State);
+                Other ->
+                    async_m:execute_callback(Callback, Other, State)
+            end
     end.
 
 promise_mref(MRef) ->
