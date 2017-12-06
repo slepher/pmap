@@ -81,7 +81,7 @@ init([pmap_worker_sup]) ->
          }};
 init([pmap_channel_worker_sup]) ->
     {ok, {{simple_one_for_one, 10, 10},
-          [{undefined, {pmap_channel_worker, start_link, []}, temporary, 5000, worker, [pmap_channel_worker]}]
+          [{undefined, {pmap_channel_worker, start_link, []}, transient, 5000, worker, [pmap_channel_worker]}]
          }};
 init([echo_server_sup]) ->
     {ok, {{simple_one_for_one, 10, 10},
