@@ -20,7 +20,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {callbacks  = maps:new(), pending_actions = [], workings = [], working_parents = [], pool_size}).
+-record(state, {callbacks  = maps:new(), pending_actions = [], workings = sets:new(), working_parents = sets:new(), pool_size}).
 
 %%%===================================================================
 %%% API
@@ -151,14 +151,14 @@ process_next_action(#state{pending_actions = []} = State) ->
 process_next_action(#state{pending_actions = [{Pid, Request, ParentPid, From}|T], 
                            workings = Working, working_parents = WorkingParents, pool_size = PoolSize } = State) ->
     NWorkingParents = 
-        case ordsets:is_element(ParentPid, Working) of
+        case sets:is_element(ParentPid, Working) of
             true ->
-                ordsets:add_element(ParentPid, WorkingParents);
+                sets:add_element(ParentPid, WorkingParents);
             false ->
                 WorkingParents
         end,
-    NWorking = ordsets:add_element(Pid, Working),
-    WorkingLen = length(ordsets:subtract(NWorking, NWorkingParents)),
+    NWorking = sets:add_element(Pid, Working),
+    WorkingLen = sets:size(sets:subtract(NWorking, NWorkingParents)),
     case WorkingLen > PoolSize of
         true ->
             State;
@@ -173,8 +173,8 @@ process_action(Pid, Request, From, State) ->
                        S;
                   (Reply, #state{workings = Working, working_parents = WorkingParents} = S) ->
                        gen_server:reply(From, Reply),
-                       NWorking = ordsets:del_element(Pid, Working),
-                       NWorkingParents = ordsets:del_element(Pid, WorkingParents),
+                       NWorking = sets:del_element(Pid, Working),
+                       NWorkingParents = sets:del_element(Pid, WorkingParents),
                        process_next_action(S#state{workings = NWorking, working_parents = NWorkingParents})
                end,
     async_m:then(Monad, Callback, #state.callbacks, State).
