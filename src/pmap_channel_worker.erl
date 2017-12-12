@@ -158,7 +158,7 @@ process_next_action(#state{pending_actions = [{Pid, Request, ParentPid, From}|T]
                 WorkingParents
         end,
     NWorking = sets:add_element(Pid, Working),
-    WorkingLen = sets:size(sets:subtract(NWorking, NWorkingParents)),
+    WorkingLen = sets:size(NWorking) - sets:size(NWorkingParents),
     case WorkingLen > PoolSize of
         true ->
             State;
