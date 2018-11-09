@@ -13,6 +13,6 @@
     {modules, []}, 
     {mod, {pmap_app, ["%MAKETIME%"]}},
     {registered, []},
-    {applications, [kernel, stdlib]},
+    {applications, [kernel, stdlib, erlando, async]},
     {env, []}
 ]}.
