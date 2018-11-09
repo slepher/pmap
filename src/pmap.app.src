@@ -11,7 +11,7 @@
     {description, "Parallel Map"},
     {vsn, "0.1"},
     {modules, []}, 
-    {mod, {pmap_app, ["%MAKETIME%"]}},
+    {mod, {pmap_app, []}},
     {registered, []},
     {applications, [kernel, stdlib, erlando, async]},
     {env, []}

@@ -64,14 +64,28 @@ init([]) ->
     PWSup  =  {'pmap_worker_sup', {supervisor, start_link,
                                   [{local, pmap_worker_sup}, ?MODULE, [pmap_worker_sup]]},
                transient, infinity, supervisor, []},
+    PCWSup  =  {'pmap_channel_worker_sup', {supervisor, start_link,
+                                  [{local, pmap_channel_worker_sup}, ?MODULE, [pmap_channel_worker_sup]]},
+               transient, infinity, supervisor, []},
+    EchoServerSup  =  {'echo_server_sup', {supervisor, start_link,
+                                  [{local, echo_server_sup}, ?MODULE, [echo_server_sup]]},
+                       transient, infinity, supervisor, []},
     AWSup  =  {'atask_worker_sup', {supervisor, start_link,
                                     [{local, atask_worker_sup}, ?MODULE, [atask_worker_sup]]},
                transient, infinity, supervisor, []},
-    {ok, {SupFlags, [AChild, PWSup, AWSup]}};
+    {ok, {SupFlags, [AChild, PWSup, PCWSup, EchoServerSup, AWSup]}};
 
 init([pmap_worker_sup]) ->
     {ok, {{simple_one_for_one, 10, 10},
           [{undefined, {pmap_worker, start_link, []}, temporary, 5000, worker, [pmap_worker]}]
+         }};
+init([pmap_channel_worker_sup]) ->
+    {ok, {{simple_one_for_one, 10, 10},
+          [{undefined, {pmap_channel_worker, start_link, []}, transient, 5000, worker, [pmap_channel_worker]}]
+         }};
+init([echo_server_sup]) ->
+    {ok, {{simple_one_for_one, 10, 10},
+          [{undefined, {echo_server, start_link, []}, temporary, 5000, worker, [echo_server]}]
          }};
 init([atask_worker_sup]) ->
     {ok, {{simple_one_for_one, 10, 10},
