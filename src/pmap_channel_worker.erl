@@ -28,7 +28,7 @@
 
 request(Channel, Pid, Request, FromPid) ->
     PName = pname(Channel),
-    async_gen_server:call(PName, {action, Pid, Request, FromPid}).
+    async_gen_server:promise_call(PName, {action, Pid, Request, FromPid}).
 
 pname(Channel) ->
     list_to_atom(lists:flatten(["pmap_worker_channel_", atom_to_list(Channel)])).
