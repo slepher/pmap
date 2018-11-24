@@ -23,7 +23,7 @@
 %%%===================================================================
 
 start() ->
-    application:start(pmap).
+    application:ensure_all_started(pmap).
 
 atask(F) ->
     atask_worker:atask(F).

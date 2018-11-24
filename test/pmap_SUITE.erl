@@ -142,6 +142,9 @@ test_pmap_promise() ->
 
 test_pmap_promise(_Config) ->
     {ok, PId} = echo_server:start(),
+    dbg:tracer(),
+    dbg:tpl(echo_server, handle_call, cx),
+    dbg:p(all, [c]),
     R = 
     pmap:task(
       fun(N) ->
