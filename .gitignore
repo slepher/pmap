@@ -8,3 +8,4 @@ deps
 _build
 rebar.lock
 .rebar3
+_checkouts
