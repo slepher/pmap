@@ -9,10 +9,10 @@
 
 {application, pmap, [
     {description, "Parallel Map"},
-    {vsn, "0.5"},
+    {vsn, "0.6.0"},
     {modules, []}, 
     {mod, {pmap_app, []}},
     {registered, []},
-    {applications, [kernel, stdlib, erlando, async]},
+    {applications, [kernel, stdlib, async]},
     {env, []}
 ]}.
