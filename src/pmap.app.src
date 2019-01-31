@@ -9,7 +9,7 @@
 
 {application, pmap, [
     {description, "Parallel Map"},
-    {vsn, "0.6.2"},
+    {vsn, "0.6.3"},
     {modules, []}, 
     {mod, {pmap_app, []}},
     {registered, []},
